@@ -1,0 +1,39 @@
+multiprocessing.pool.RemoteTraceback: 
+"""
+Traceback (most recent call last):
+  File "/sw/rev/25.04/rome_rocky8/linux-rocky8-zen/gcc-8.5.0/python-3.11.9-tgodgilcc64ycpsrwwvfvwaz3p6vxyl7/lib/python3.11/multiprocessing/pool.py", line 125, in worker
+    result = (True, func(*args, **kwds))
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/sw/rev/25.04/rome_rocky8/linux-rocky8-zen/gcc-8.5.0/python-3.11.9-tgodgilcc64ycpsrwwvfvwaz3p6vxyl7/lib/python3.11/multiprocessing/pool.py", line 48, in mapstar
+    return list(map(*args))
+           ^^^^^^^^^^^^^^^^
+  File "/mnt/ceph-hdd/projects/cidbn_wolf_neurodyn/u24849/src/database/kernel/__init__.py", line 167, in _kernel_single_row
+    kernel_output, train_error, test_error = crossVal(
+                                             ^^^^^^^^^
+  File "/mnt/ceph-hdd/projects/cidbn_wolf_neurodyn/u24849/src/database/kernel/fill_db/_fill_db.py", line 881, in crossVal
+    for train_set, test_set in splitData(dataset, test_ratio):
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/ceph-hdd/projects/cidbn_wolf_neurodyn/u24849/src/database/kernel/fill_db/_fill_db.py", line 838, in splitData
+    for start in range(0, n, test_size):
+                 ^^^^^^^^^^^^^^^^^^^^^^
+ValueError: range() arg 3 must not be zero
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/mnt/ceph-hdd/projects/cidbn_wolf_neurodyn/u24849/./src/main.py", line 115, in <module>
+    db.fill()
+  File "/mnt/ceph-hdd/projects/cidbn_wolf_neurodyn/u24849/src/database/kernel/__init__.py", line 331, in fill
+    self._fill_kernels()
+  File "/mnt/ceph-hdd/projects/cidbn_wolf_neurodyn/u24849/src/database/kernel/__init__.py", line 214, in _fill_kernels
+    list_rows = pool.map(self._kernel_single_row, main_table)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/sw/rev/25.04/rome_rocky8/linux-rocky8-zen/gcc-8.5.0/python-3.11.9-tgodgilcc64ycpsrwwvfvwaz3p6vxyl7/lib/python3.11/multiprocessing/pool.py", line 367, in map
+    return self._map_async(func, iterable, mapstar, chunksize).get()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/sw/rev/25.04/rome_rocky8/linux-rocky8-zen/gcc-8.5.0/python-3.11.9-tgodgilcc64ycpsrwwvfvwaz3p6vxyl7/lib/python3.11/multiprocessing/pool.py", line 774, in get
+    raise self._value
+ValueError: range() arg 3 must not be zero
+srun: error: dbn01: task 0: Exited with exit code 1
+srun: Terminating StepId=14927699.0

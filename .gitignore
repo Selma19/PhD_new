@@ -1,0 +1,5 @@
+**/data
+**/CPR_psychophysics
+**/slurm_files/*
+**/venv
+**/__pycache__
