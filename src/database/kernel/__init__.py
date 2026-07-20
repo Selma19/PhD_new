@@ -152,8 +152,9 @@ class Kernel_db(Database):
         
         Returns a list of rows to be inserted in the `Kernels` table of the `Kernel` database.
         """
-        print(f"processing filtering method {row_main[3]}")
+        print(f"processing agent {row_main[1]}")
         print(f"processing coherence {row_main[2]}")
+        print(f"processing filtering method {row_main[3]}")
         print()
 
         # rows to insert into the Kernels table
@@ -193,7 +194,7 @@ class Kernel_db(Database):
             triples.append( ('param1', kernel_method, json.dumps('no_param')) )
         return triples
 
-    def _fill_kernels(self):
+    def _fill_kernels(self, debug: bool):
         """Fills the `Kernels` table.
         
         To do this, first define the triples (kernel_type, kernel_method, method_param)
@@ -202,12 +203,31 @@ class Kernel_db(Database):
         compute the corresponding kernel_output, train_error and test_error.
         Finally, insert all data into the Kernels table.
         """
-        # for each row of Main and each triple, compute the kernels and evaluate them
-        main_table = self.cur.execute("""SELECT * FROM Main""").fetchall()
+        if not debug:
+            # for each row of Main and each triple, compute the kernels and evaluate them
+            main_table = self.cur.execute("""SELECT * FROM Main""").fetchall()
+
+        else:
+            agent = 'aaa'
+            coh = 0.0
+            filtering_method = 'unfiltered'
+            main_table = self.cur.execute("""
+                SELECT *
+                FROM Main
+                WHERE
+                    agent = ?
+                    AND coh = ?
+                    AND filtering_method = ?
+            """, (agent, coh, filtering_method)).fetchall()
 
         # temporarily close the connection to the db to avoid multiprocessing to
         # raise an error about not being able to pickle a sqlite3.Connection object
         self.close()
+
+        if debug:
+            for row in main_table:
+                self._kernel_single_row(row)
+            exit()
 
         with mp.Pool( processes=min(64, mp.cpu_count()) ) as pool:
             # list_rows is a list of list of tuples
@@ -325,10 +345,10 @@ class Kernel_db(Database):
         # fill the main table:
         # it contains the agent names, coherence values and filtering method
         # the names and coherence values are imported from the stimulus database
-        # self._fill_main()
+        self._fill_main()
 
         # generate all kernels using various models, optimization and regularization methods
         self._fill_kernels()
 
         # generate all fits using various models and optimization methods
-        # self._fill_fit_kernels()
+        self._fill_fit_kernels()

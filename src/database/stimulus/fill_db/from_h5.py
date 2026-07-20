@@ -352,6 +352,11 @@ def extract_all(agent: str):
                 ) / np.sum(mask, axis=1)
                 mean_dot = [mean_dot[:, 0].tolist(), mean_dot[:, 1].tolist()]
 
+                # take care that the mean dot direction could not be computed for the last time
+                # step, and tab_times contains the times at which both the mean dot and
+                # joystick data are computed
+                tab_times = tab_times[:-1]
+
                 # extract the target times
                 startTgt = sorted_find(startTime, tgt_times)
                 endTgt = sorted_find(endTime, tgt_times)
@@ -388,7 +393,7 @@ def extract_all(agent: str):
                 rows.append(
                     (
                         agent, coh, h5_file[:-3], block_num,
-                        json.dumps(tab_times.tolist()[:-1]), json.dumps(nominal_angle),
+                        json.dumps(tab_times.tolist()), json.dumps(nominal_angle),
                         json.dumps(target_times.tolist()), json.dumps(joystick),
                         json.dumps(mean_dot)
                     )
