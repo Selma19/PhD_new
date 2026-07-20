@@ -50,47 +50,6 @@ class Stimulus_db(Database):
         print("Stimulus database created")
         print()
 
-    def _fill_from_folders_old(self, agent: str):
-        """Thought to be called in parallel on multiple agents.
-        
-        It returns the list of rows to be inserted in the `Stimulus` database relative to `agent`.
-        """
-        # get the list of coherence values
-        cohs = [
-            0.079, 0.131, 0.217,
-            0.359, 0.592, 0.978
-        ]
-        
-        rows = []
-        
-        print(f"agent {agent}")
-        for coh in cohs:
-            print(f"coherence {coh}")
-            blocks = get_list_block(coh, agent)
-            for block in blocks:
-                # wrap the arguments for readability
-                args = (agent, coh, block)
-
-                # accumulate data here as a row to be inserted in the table
-                row = (agent, coh, *from_folders.block_xp_num(block))
-                for func in [
-                    from_folders.get_time_steps, from_folders.get_nom,
-                    from_folders.get_tgt_times, from_folders.get_joystick,
-                    from_folders.get_dot
-                ]:
-                    row += (json.dumps( func(*args) ),)
-
-                # insert the row into the table
-                self.cur.execute("""
-                    INSERT OR IGNORE INTO Main (
-                        agent, coh, xp, block, times,
-                        nominal_angle, target_times,
-                        joystick, mean_dot
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, row)
-                self.conn.commit()
-            print()
-
     def _fill_single_folders(self, agent: str):
         # get the list of coherence values
         cohs = [
