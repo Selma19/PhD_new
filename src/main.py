@@ -104,15 +104,16 @@ def display_fit(kernel_key: int):
 
 if __name__ == "__main__":
     # # create the stimulus database for all agents available
-    db = Stimulus_db()
+    # db = Stimulus_db()
+    # db.clear()
     # db.create()
-    db.fill(choice='h5')
+    # db.fill(choice='h5')
     # exit()
 
     # create the kernel database for all agents available
     db = Kernel_db()
     db.connect()
-    db._fill_kernels(debug=True)
+    db._fill_kernels(debug=False)
     exit()
 
     #visu_filtered_data()

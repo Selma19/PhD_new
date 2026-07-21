@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=fill_main_k_kernel
-##SBATCH -t 20:00:00           # time limit hh:mm:ss
-#SBATCH --cpus-per-task=64
+#SBATCH --job-name=fill_kernels
+##SBATCH -t 00:30:00           # time limit hh:mm:ss
+#SBATCH --cpus-per-task=80
 #SBATCH --ntasks-per-node=1
 ##SBATCH --qos=2h              # reduce the queuing time
 #SBATCH --nodes=1             # nb of nodes requested
@@ -10,4 +10,4 @@
 #SBATCH -e ./slurm-files/%x-%J.err
 
 source ./venv/bin/activate
-srun python ./src/main.py
+srun ./venv/bin/python ./src/main.py

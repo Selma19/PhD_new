@@ -99,7 +99,7 @@ class Fit_param1(Fit_model):
 
 		# find the parameters that maximize the likelihood
 		sampler = Sampler(prior, vec_likelihood, n_live=3000, vectorized=True, pass_dict=True)
-		sampler.run(verbose=True, n_like_max=2e5)
+		sampler.run(verbose=False, n_like_max=2e5)
 
 		points, log_w, _ = sampler.posterior(return_as_dict=True)
 		# change the data format to make self.out JSON serializable
@@ -181,7 +181,7 @@ class Fit_param2(Fit_model):
 
 		# find the parameters that maximize the likelihood
 		sampler = Sampler(prior, vec_likelihood, n_live=3000, vectorized=True, pass_dict=True)
-		sampler.run(verbose=True, n_like_max=2e5)
+		sampler.run(verbose=False, n_like_max=2e5)
 
 		points, log_w, _ = sampler.posterior(return_as_dict=True)
 		# change the data format to make self.out JSON serializable
@@ -492,7 +492,7 @@ class Param1_kernel(Kernel):
 			prior, vec_likelihood,
 			n_live=3000, vectorized=True, pass_dict=True
 		)
-		sampler.run(verbose=True, n_like_max=2e5)
+		sampler.run(verbose=False, n_like_max=2e5)
 
 		points, log_w, _ = sampler.posterior(return_as_dict=True)
 		# change the data format to make self.out JSON serializable
@@ -688,7 +688,6 @@ def _load_dataset_remove_after(
 	for the filtering option 'remove_after_tgt'.
 	"""
 	joystick_list, dot_list = load_fragments(agent, coh, min_length=300)
-	print(f"nb of valid time series: {len(dot_list)}")
 	return Js_Mat_for_blocks(joystick_list, dot_list, 300)
 
 def load_dataset(

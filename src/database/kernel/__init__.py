@@ -152,10 +152,6 @@ class Kernel_db(Database):
         
         Returns a list of rows to be inserted in the `Kernels` table of the `Kernel` database.
         """
-        print(f"processing agent {row_main[1]}")
-        print(f"processing coherence {row_main[2]}")
-        print(f"processing filtering method {row_main[3]}")
-        print()
 
         # rows to insert into the Kernels table
         rows = []
@@ -163,8 +159,6 @@ class Kernel_db(Database):
         dataset = load_dataset(*row_main[1:])
 
         for triple in self._gen_triples():
-            print(f"processing triple {triple}")
-
             kernel_output, train_error, test_error = crossVal(
                 dataset, *triple[:2], json.loads(triple[2])
             )
@@ -228,8 +222,9 @@ class Kernel_db(Database):
             for row in main_table:
                 self._kernel_single_row(row)
             exit()
-
-        with mp.Pool( processes=min(64, mp.cpu_count()) ) as pool:
+        
+        n_cpus = min(80, mp.cpu_count())
+        with mp.Pool( processes=min(n_cpus, len(main_table)) ) as pool:
             # list_rows is a list of list of tuples
             list_rows = pool.map(self._kernel_single_row, main_table)
 
