@@ -190,7 +190,7 @@ class Kernel_db(Database):
 
     def _fill_kernels(self, debug: bool):
         """Fills the `Kernels` table.
-        
+
         To do this, first define the triples (kernel_type, kernel_method, method_param)
         that will be part of the table.
         Then, for each triple and each row of the Main table,
@@ -200,6 +200,12 @@ class Kernel_db(Database):
         if not debug:
             # for each row of Main and each triple, compute the kernels and evaluate them
             main_table = self.cur.execute("""SELECT * FROM Main""").fetchall()
+
+            # count the nb of rows to process
+            # divide them into chunks so that each available cpu processes k rows,
+            # (the processing of 1 row generates 17 rows to be inserted in Kernels table)
+            # then commit the generated rows to the kernel table and load the next chunk
+            pass
 
         else:
             agent = 'aaa'
@@ -213,6 +219,7 @@ class Kernel_db(Database):
                     AND coh = ?
                     AND filtering_method = ?
             """, (agent, coh, filtering_method)).fetchall()
+            print("nb of rows should be 1", len(main_table))
 
         # temporarily close the connection to the db to avoid multiprocessing to
         # raise an error about not being able to pickle a sqlite3.Connection object
@@ -220,9 +227,10 @@ class Kernel_db(Database):
 
         if debug:
             for row in main_table:
+                print("debug mode, processing a single row of stimulus Main table")
                 self._kernel_single_row(row)
             exit()
-        
+
         n_cpus = min(80, mp.cpu_count())
         with mp.Pool( processes=min(n_cpus, len(main_table)) ) as pool:
             # list_rows is a list of list of tuples
