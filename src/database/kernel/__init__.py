@@ -188,53 +188,17 @@ class Kernel_db(Database):
             triples.append( ('param1', kernel_method, json.dumps('no_param')) )
         return triples
 
-    def _fill_kernels(self, debug: bool):
-        """Fills the `Kernels` table.
-
-        To do this, first define the triples (kernel_type, kernel_method, method_param)
-        that will be part of the table.
-        Then, for each triple and each row of the Main table,
-        compute the corresponding kernel_output, train_error and test_error.
-        Finally, insert all data into the Kernels table.
+    def _fill_kernels_chunk(self, main_rows: list):
+        """Processes in parallel each row contained in `main_rows`.
         """
-        if not debug:
-            # for each row of Main and each triple, compute the kernels and evaluate them
-            main_table = self.cur.execute("""SELECT * FROM Main""").fetchall()
-
-            # count the nb of rows to process
-            # divide them into chunks so that each available cpu processes k rows,
-            # (the processing of 1 row generates 17 rows to be inserted in Kernels table)
-            # then commit the generated rows to the kernel table and load the next chunk
-            pass
-
-        else:
-            agent = 'aaa'
-            coh = 0.0
-            filtering_method = 'unfiltered'
-            main_table = self.cur.execute("""
-                SELECT *
-                FROM Main
-                WHERE
-                    agent = ?
-                    AND coh = ?
-                    AND filtering_method = ?
-            """, (agent, coh, filtering_method)).fetchall()
-            print("nb of rows should be 1", len(main_table))
-
         # temporarily close the connection to the db to avoid multiprocessing to
         # raise an error about not being able to pickle a sqlite3.Connection object
         self.close()
 
-        if debug:
-            for row in main_table:
-                print("debug mode, processing a single row of stimulus Main table")
-                self._kernel_single_row(row)
-            exit()
-
-        n_cpus = min(80, mp.cpu_count())
-        with mp.Pool( processes=min(n_cpus, len(main_table)) ) as pool:
+        n_cpus = min(100, mp.cpu_count())
+        with mp.Pool( processes=min(n_cpus, len(main_rows)) ) as pool:
             # list_rows is a list of list of tuples
-            list_rows = pool.map(self._kernel_single_row, main_table)
+            list_rows = pool.map(self._kernel_single_row, main_rows)
 
         rows = []
         for el in list_rows:
@@ -254,6 +218,66 @@ class Kernel_db(Database):
         )
         self.conn.commit()
 
+    def _fill_kernels_in_chunks(self, rows_per_cpu: int):
+        # for each row of Main and each triple, compute the kernels and evaluate them
+        n_rows = len(self.cur.execute("""SELECT * FROM Main""").fetchall())
+
+        # count the nb of rows to process
+        # divide them into chunks so that each available cpu processes k rows,
+        # (the processing of 1 row generates 17 rows to be inserted in Kernels table)
+        # then commit the generated rows to the kernel table and load the next chunk
+        n_cpus = min(100, mp.cpu_count())
+        main_keys = [
+            (k + 1, k + 1 + rows_per_cpu * n_cpus)
+            for k in range(n_rows // (rows_per_cpu * n_cpus))
+        ]
+        if n_rows % (rows_per_cpu * n_cpus) != 0:
+            main_keys.append( (main_keys[-1][1], n_rows + 1) )
+
+        for key1, key2 in main_keys:
+            print(f"processing rows {key1} to {key2}")
+
+            main_rows = self.cur.execute("""
+                SELECT *
+                FROM Main
+                WHERE
+                    id >= ?
+                    AND id < ?
+            """, (key1, key2)).fetchall()
+            self._fill_kernels_chunk(main_rows)
+
+        print("Kernels table filled")
+        print()
+
+    def _fill_kernels(self, debug: bool):
+        """Fills the `Kernels` table.
+
+        To do this, first define the triples (kernel_type, kernel_method, method_param)
+        that will be part of the table.
+        Then, for each triple and each row of the Main table,
+        compute the corresponding kernel_output, train_error and test_error.
+        Finally, insert all data into the Kernels table.
+        """
+        if debug:
+            main_table = self.cur.execute("""
+                SELECT *
+                FROM Main
+                WHERE
+                    id <= 10
+            """).fetchall()
+            print("nb of rows should be 10", len(main_table))
+
+            self.close()
+            print("debug mode, processing 10 rows of stimulus Main table" \
+            "in parallel")
+            with mp.Pool( processes=10 ) as pool:
+                # list_rows is a list of list of tuples
+                list_rows = pool.map(self._kernel_single_row, main_table)
+            exit()
+
+        self._fill_kernels_chunk(
+            self.cur.execute("""SELECT * FROM Main""").fetchall()
+        )
         print("Kernels table filled")
         print()
 

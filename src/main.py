@@ -113,7 +113,7 @@ if __name__ == "__main__":
     # create the kernel database for all agents available
     db = Kernel_db()
     db.connect()
-    db._fill_kernels(debug=True)
+    db._fill_kernels_in_chunks(rows_per_cpu=3)
     exit()
 
     #visu_filtered_data()
