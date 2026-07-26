@@ -2,6 +2,7 @@ from database import Kernel_db, Stimulus_db, load_fragments
 from database.kernel import fit_kernel
 import matplotlib.pyplot as plt
 import numpy as np
+import sys
 
 def visu_filtered_data():
     """Visualizes the filtered data, in particular the time intervals that were selected,
@@ -107,18 +108,30 @@ if __name__ == "__main__":
     # db = Stimulus_db()
     # db.clear()
     # db.create()
-    # db.fill(choice='h5')
+    # db.fill(choice='h5', n_cpus_max=38)
     # exit()
 
     # create the kernel database for all agents available
-    db = Kernel_db()
-    db.connect()
-    db._fill_kernels_in_chunks(rows_per_cpu=3)
-    exit()
+    # check arguments sent to the program
+    try:
+        args = sys.argv[1:3]
+        script_num = int(args[0])
+        n_scripts = int(args[1])
+    except:
+        script_num = 0
+        n_scripts = 1
+    
+    db = Kernel_db(location='memory')
+    db._fill_kernels(
+        max_rows_per_cpu=2,
+        n_cpus_max=50,
+        script_num=script_num,
+        n_scripts=n_scripts
+    )
 
     #visu_filtered_data()
 
-    Kernel_db().visu()
+    # Kernel_db().visu()
     #exit()
     #kernel_key = 201 # 107 120 201 16 33 62 66 136 56
     #display_fit(kernel_key)

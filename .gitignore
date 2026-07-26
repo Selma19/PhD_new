@@ -3,3 +3,4 @@
 **/slurm-files
 **/venv
 **/__pycache__
+**/backup

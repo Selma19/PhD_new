@@ -620,19 +620,21 @@ def load_fragments(
 		same as `joystick_list`, but for the mean dot direction time series
 	"""
 	# connect to the stimulus db
-	db = Stimulus_db()
+	db = Stimulus_db(location='memory')
 	db.connect()
 
 	# get all unique couples (xp, block)
 	xp_blocks = db.cur.execute("""
 		SELECT DISTINCT xp, block FROM Main
 	""").fetchall()
+	db.close()
 
 	# for each block and xp, load the joystick, dot, time steps, nominal angle
 	# and target time steps data (pretty much everything)
 	# then filter the data before accumulating them
 	joystick_list = []; dot_list = []
 	for xp, block in xp_blocks:
+		db.connect()
 		row = db.cur.execute("""
 			SELECT
 				times,
@@ -648,6 +650,8 @@ def load_fragments(
 				AND xp = ?
 				AND block = ?
 		""", (agent, coh, xp, block)).fetchone()
+		db.close()
+
 		if row is not None:
 			# the time steps at which the joystick and dot data are sampled
 			ts = json.loads(row[0])
@@ -671,9 +675,6 @@ def load_fragments(
 			# accumulate the filtered data
 			joystick_list.extend(joysticks_)
 			dot_list.extend(dots_)
-
-	# think about disconnecting the stimulus db
-	db.close()
 
 	# keep only the time series that are long enough
 	joystick_list = [el for el in joystick_list if len(el) >= min_length]
@@ -713,7 +714,7 @@ def load_dataset(
 		if 'remove_after_tgt', the time steps following the apperance of a target are removed
 	"""
 	if filtering_method == 'unfiltered':
-		db = Stimulus_db()
+		db = Stimulus_db(location='memory')
 		db.connect()
 		raw_signal = db.cur.execute("""
 			SELECT joystick, mean_dot

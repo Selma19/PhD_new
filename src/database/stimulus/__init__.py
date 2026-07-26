@@ -19,17 +19,21 @@ class Stimulus_db(Database):
     Time steps are expressed in ms and angles in radians.
     """
 
-    def __init__(self):
+    def __init__(self, location: str| None=None):
         super().__init__()
-        self.db_path = __file__
-        for _ in range(4):
-            self.db_path = os.path.dirname(self.db_path)
-        self.db_path = os.path.join(self.db_path, 'data', 'solo')
+        if location is None:
+            self.db_path = __file__
+            for _ in range(4):
+                self.db_path = os.path.dirname(self.db_path)
+            self.db_path = os.path.join(self.db_path, 'data', 'solo')
+
+        elif location == 'memory':
+            self.db_path = os.environ['LOCAL_TMPDIR']
+
         self.db_name = "stimulus.db"
 
     def create(self):
-        if self.conn is None:
-            self.connect()
+        self.connect()
         
         self.cur.execute("""
         CREATE TABLE IF NOT EXISTS Main (
@@ -90,7 +94,7 @@ class Stimulus_db(Database):
         """, rows)
         self.conn.commit()
 
-    def fill(self, choice: Literal['folders', 'h5']):
+    def fill(self, choice: Literal['folders', 'h5'], n_cpus_max: int):
         """Fills the `Stimulus` database.
         
         Notes
@@ -114,10 +118,12 @@ class Stimulus_db(Database):
         agents = get_agents()
 
         print("nb of cpu cores available:", mp.cpu_count())
+        print("nb of agents:", len(agents))
         print()
 
         # process each agent in parallel
-        n_cpus = min(64, mp.cpu_count())
+        self.close()
+        n_cpus = min(n_cpus_max, mp.cpu_count())
         with mp.Pool( processes=min(len(agents), n_cpus) ) as pool:
             # list_rows is a list of list of tuples
             list_rows = pool.map(fill_single_agent, agents)
@@ -126,11 +132,11 @@ class Stimulus_db(Database):
         print()
         
         # insert agent data into the database
-        if self.conn is None:
-            self.connect()
+        self.connect()
         
         # rows is a list of tuples
         rows = []
         for el in list_rows:
             rows.extend(el)
         self._insert_rows(rows)
+        self.close()

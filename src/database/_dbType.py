@@ -19,11 +19,12 @@ class Database:
 
     def connect(self):
         """Creates a `sqlite3` connexion with the database."""
-        self.conn = sqlite3.connect(
-            os.path.join(self.db_path, self.db_name)
-        )
-        self.conn.execute("PRAGMA foreign_keys = ON;")
-        self.cur = self.conn.cursor()
+        if self.conn is None:
+            self.conn = sqlite3.connect(
+                os.path.join(self.db_path, self.db_name)
+            )
+            self.conn.execute("PRAGMA foreign_keys = ON;")
+            self.cur = self.conn.cursor()
 
     def close(self):
         try:
