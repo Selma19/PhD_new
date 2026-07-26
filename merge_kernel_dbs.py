@@ -4,7 +4,7 @@ given that these tables are all disjoint and have an autoincrementing primary ke
 
 import sqlite3, os
 
-db_dir = os.environ['SHARED_SSD_TMPDIR']
+db_dir = os.environ['SHARED_TMPDIR']
 
 # connect to the aggregation database
 main_conn = sqlite3.connect(

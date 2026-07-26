@@ -16,4 +16,4 @@ echo "databases transferred to compute node local ssd"
 
 echo "transferring the database chunk to the ssd shared by all compute nodes"
 
-cp ${LOCAL_TMPDIR}/kernel.db $SHARED_SSD_TMPDIR/kernel_$1.db
+cp ${LOCAL_TMPDIR}/kernel.db $SHARED_TMPDIR/kernel_$1.db

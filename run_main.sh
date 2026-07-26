@@ -25,6 +25,9 @@ export OMP_NUM_THREADS=1
 
 source ./venv/bin/activate
 
+# this will be the database where all data will be aggregated after computation
+cp ./data/solo/kernel.db $SHARED_TMPDIR
+
 for ((i=0; i<$SLURM_JOB_NUM_NODES; i++))
 do
     srun --nodes=1 --exclusive bash _run_main.sh $i $SLURM_JOB_NUM_NODES &
@@ -32,17 +35,13 @@ done
 
 wait
 
-# this will be the database where all data will be aggregated after computation
-ls $SHARED_SSD_TMPDIR
-cp ./data/solo/kernel.db $SHARED_SSD_TMPDIR
-
 echo "aggregating all pieces into a single database..."
 
 srun --nodes=1 ./venv/bin/python ./merge_kernel_dbs.py
 
 echo "transferring back the kernel database..."
 
-cp ${SHARED_SSD_TMPDIR}/kernel.db ./data/solo/new_kernel.db
+cp ${SHARED_TMPDIR}/kernel.db ./data/solo/new_kernel.db
 
 # to check ram and cpu usage of the job, you may want to run:
 # module load py-reportseff
