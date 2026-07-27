@@ -5,7 +5,6 @@ from sklearn import linear_model
 from nautilus import Sampler, Prior
 import json
 
-from ...stimulus.loadData import load_list_block_data, get_list_block
 from .utils import (
 	Js_Mat_for_blocks, Dataset, exponential_Fred,
 	vectorized_exp_Fred, exp_Fred_inv, vectorized_exp_Fred_inv, exp_Fred_jumps
@@ -526,6 +525,53 @@ class Param1_kernel(Kernel):
 
 		return exponential_Fred(np.linspace(0, 1, 300), *popt)
 
+def sorted_find_exclusive(t: float, tabTimes: List[float]):
+	"""Returns `k` such that
+	`tabTimes[k - 1] <= t < tabTimes[k]`.
+	Returns `None` if `t >= tabTimes[-1]`.
+
+	Notes
+	-----
+	It assumes that `tabTimes` is sorted by increasing order, enabling
+	to use dichotomy.
+	"""
+	if t < tabTimes[0]:
+		return 0
+	if t >= tabTimes[-1]:
+		return None
+	k_left = 0
+	k_right = len(tabTimes) - 1
+	while k_right - k_left > 1:
+		k = (k_left + k_right) // 2
+		if tabTimes[k] <= t:
+			k_left = k
+		else:
+			k_right = k
+	return k_right
+
+def sorted_find_inclusive(t: float, tabTimes: List[float]):
+	"""Returns `k` such that
+	`tabTimes[k - 1] < t <= tabTimes[k]`.
+
+	Notes
+	-----
+	It assumes that `tabTimes` is sorted by increasing order, enabling
+	to use dichotomy.
+	"""
+	if t <= tabTimes[0]:
+		return 0
+	if t > tabTimes[-1]:
+		return None
+	k_left = 0
+	k_right = len(tabTimes) - 1
+	while k_right - k_left > 1:
+		k = (k_left + k_right) // 2
+		if tabTimes[k] < t:
+			k_left = k
+		else:
+			k_right = k
+	return k_right
+
 def _filter_remove_after(
 	joystick: List[complex],
 	dot: List[complex],
@@ -544,69 +590,49 @@ def _filter_remove_after(
 	# the time steps that have been browsed so far range from 0 to ind
 	ind = 0
 
-	# the target times of appearance that have been browsed so far range from 0 to ind_tgt
-	ind_tgt = 0
-
-	# the times of change in nominal direction that have been browsed
-	# so far range from 0 to ind_nom
-	ind_nom = 0
-
 	while True:
 		# this current time is the starting time of the next time series
 		current_time = ts[ind]
 
 		# time of appearance of the next target (if any)
-		next_tgt = None
-		for num, t in enumerate(tgt_ts[ind_tgt:], start=ind_tgt):
-			if t > current_time:
-				next_tgt = t
-				ind_tgt = num
-				break
+		ind_tgt = sorted_find_exclusive(current_time, tgt_ts)
 
 		# if there is no target anymore, then no more splits
-		if next_tgt is None:
+		if ind_tgt is None:
 			joysticks_.append(joystick[ind:])
 			dots_.append(dot[ind:])
 			break
+		next_tgt = tgt_ts[ind_tgt]
 
 		# the time series spans from current_time to next_tgt
 		# (it stops just before the target appears)
-		start = ind
-		for num, t in enumerate(ts[ind:], start=ind):
-			if t >= next_tgt:
-				end = num
-				break
-		joysticks_.append(joystick[start: end])
-		dots_.append(dot[start: end])
+		end = sorted_find_inclusive(next_tgt, ts)
+		joysticks_.append(joystick[ind: end])
+		dots_.append(dot[ind: end])
 		current_time = ts[end]
 
 		# now we determine the starting time of the next time series, if any:
 		# this is the time of the next change in nominal direction
 		# (it starts just after the change)
-		next_nom = None
-		for num, t in enumerate(nom_ts[ind_nom:], start=ind_nom):
-			if t >= current_time:
-				next_nom = t
-				ind_nom = num
-				break
+		ind_nom = sorted_find_inclusive(current_time, nom_ts)
 
 		# if there is no change anymore, then no more splits
-		if next_nom is None:
+		if ind_nom is None:
 			joysticks_.append(joystick[end:])
 			dots_.append(dot[end:])
 			break
-		
+		next_nom = nom_ts[ind_nom]
+
 		# the new index in ts corresponds to the time of change in nominal direction
-		for num, t in enumerate(ts[end:], start=end):
-			if t >= next_nom:
-				ind = num
-				break
+		ind = sorted_find_inclusive(next_nom, ts)
+
 	return joysticks_, dots_
 
 def load_fragments(
 	agent: str,
 	coh: float,
-	min_length: int
+	min_length: int,
+	db_location=None
 ):
 	"""Returns the fragments of the joystick and mean dot direction time series
 	after the filtering 'remove_after_tgt'.
@@ -620,7 +646,7 @@ def load_fragments(
 		same as `joystick_list`, but for the mean dot direction time series
 	"""
 	# connect to the stimulus db
-	db = Stimulus_db(location='memory')
+	db = Stimulus_db(location=db_location)
 	db.connect()
 
 	# get all unique couples (xp, block)
@@ -661,11 +687,11 @@ def load_fragments(
 
 			tgt_ts = json.loads(row[2])
 
-			ecc, joy_angle = json.loads(row[3])
-			joystick = np.array(ecc) * np.exp(1j * np.array(joy_angle))
+			tab = np.array(json.loads(row[3]))
+			joystick = tab[0, :] * np.exp(1j * tab[1, :])
 
-			real_part, imag_part = json.loads(row[4])
-			dot = np.array(real_part) + 1j * np.array(imag_part)
+			tab = np.array(json.loads(row[4]))
+			dot = tab[0, :] + 1j * tab[1, :]
 
 			# filter the dot and joystick time series
 			joysticks_, dots_ = _filter_remove_after(
@@ -683,18 +709,20 @@ def load_fragments(
 
 def _load_dataset_remove_after(
 	agent: str,
-	coh: float
+	coh: float,
+	db_location=None
 ) -> Dataset:
 	"""Returns the dataset loaded from the stimulus db
 	for the filtering option 'remove_after_tgt'.
 	"""
-	joystick_list, dot_list = load_fragments(agent, coh, min_length=300)
+	joystick_list, dot_list = load_fragments(agent, coh, min_length=300, db_location=db_location)
 	return Js_Mat_for_blocks(joystick_list, dot_list, 300)
 
 def load_dataset(
 	agent: str,
 	coh: float,
-	filtering_method: Literal['unfiltered', 'remove_after_tgt']
+	filtering_method: Literal['unfiltered', 'remove_after_tgt'],
+	db_location=None
 ) -> Dataset:
 	"""Returns in this order the dot and joystick directions under a canonical matrix form.
 
@@ -714,7 +742,7 @@ def load_dataset(
 		if 'remove_after_tgt', the time steps following the apperance of a target are removed
 	"""
 	if filtering_method == 'unfiltered':
-		db = Stimulus_db(location='memory')
+		db = Stimulus_db(location=db_location)
 		db.connect()
 		raw_signal = db.cur.execute("""
 			SELECT joystick, mean_dot
@@ -741,7 +769,7 @@ def load_dataset(
 		return Js_Mat_for_blocks(J_list, D_list, 300)
 
 	elif filtering_method == 'remove_after_tgt':
-		return _load_dataset_remove_after(agent, coh)
+		return _load_dataset_remove_after(agent, coh, db_location=db_location)
 
 	else:
 		raise ValueError("check the value of 'filtering_method'")
@@ -842,9 +870,12 @@ def splitData(dataset: Dataset, testRatio: float) -> List[Tuple[Dataset, Dataset
 		train_indices = window[:test_size]
 		test_indices = window[test_size:]
 
-		train_set = (Mat[train_indices], Js[train_indices])
-		test_set = (Mat[test_indices], Js[test_indices])
-		res.append((train_set, test_set))
+		res.append(
+			(
+				(Mat[train_indices], Js[train_indices]),
+				(Mat[test_indices], Js[test_indices])
+			)
+		)
 	return res
 
 def crossVal(
@@ -864,7 +895,7 @@ def crossVal(
 	The model parameters returned are those which minimize the sum of the train and test
 	errors across all splits of the dataset.
 	"""
-	test_ratio = 0.3
+	testRatio = 0.3
 	kernel_outputs = []
 	train_errors = []
 	test_errors = []
@@ -878,7 +909,7 @@ def crossVal(
 		raise ValueError("check the value of 'kernel_type'")
 
 	# split the dataset into a training and test sets
-	for train_set, test_set in splitData(dataset, test_ratio):
+	for train_set, test_set in splitData(dataset, testRatio):
 		# train the model
 		model.train(train_set, kernel_method, method_param)
 

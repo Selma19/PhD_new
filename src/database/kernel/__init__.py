@@ -100,8 +100,7 @@ class Kernel_db(Database):
         """)
 
     def create(self):
-        if self.conn is None:
-            self.connect()
+        self.connect()
 
         self._create_main()
         self._create_kernels()
@@ -117,16 +116,14 @@ class Kernel_db(Database):
         stim_db = Stimulus_db()
         stim_db.connect()
 
-        # load the agents (note we want unique values)
-        agents = stim_db.cur.execute("""
-            SELECT DISTINCT agent FROM Main
+        # load all pairs (agent, coh) occurring in the stimulus db
+        # note that some agents have distinct coherence values
+        keys = stim_db.cur.execute("""
+            SELECT DISTINCT
+                agent, coh
+            FROM
+                Main
         """).fetchall()
-
-        # load the coherence values (note we want unique values)
-        cohs = stim_db.cur.execute("""
-            SELECT DISTINCT coh FROM Main
-        """).fetchall()
-        
         stim_db.close()
 
         # define the filtering methods:
@@ -136,10 +133,9 @@ class Kernel_db(Database):
 
         # fill the main table
         rows = []
-        for agent in agents:
-            for coh in cohs:
-                for filter_meth in filter_meths:
-                    rows.append((*agent, *coh, filter_meth))
+        for agent, coh in keys:
+            for filter_meth in filter_meths:
+                rows.append( (agent, coh, filter_meth) )
 
         self.connect()
         self.cur.executemany("""

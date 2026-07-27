@@ -11,20 +11,23 @@ class Dataset:
 	"""
 
 def D_m_matrix_single_block(D_m, kernelSize: int):
-	mat = np.zeros((len(D_m), kernelSize),dtype=complex)
-	for tau in range(kernelSize):
-		mat[tau, :tau + 1] = D_m[:tau + 1][::-1]
-	for tau in range(kernelSize, len(D_m)):
-		mat[tau, :] = D_m[tau - kernelSize + 1: tau + 1][::-1]
+	mat = np.zeros((len(D_m), kernelSize), dtype=complex)
+
+	# fill the first half
+	a, b = np.ogrid[0:kernelSize, 0:-kernelSize:-1]
+	mat[:kernelSize, :] = np.tril(D_m[a + b])
+
+	# fill the second half
+	a, b = np.ogrid[1:len(D_m)-kernelSize+1, kernelSize-1:-1:-1]
+	mat[kernelSize:, :] = D_m[a + b]
 	return mat
 
 def Js_Mat_for_blocks(joystick_list, dot_list, kernel_size):
-	Js = np.zeros(2, dtype=complex)
-	Mat = np.zeros((2, kernel_size), dtype=complex)
-	for joy, dot in zip(joystick_list, dot_list):
-		Mat = np.concatenate((Mat, D_m_matrix_single_block(dot, kernel_size)), axis = 0)
-		Js = np.concatenate((Js, joy), axis = 0)
-	return Mat[2:, :], Js[2:]
+	list_mat = [
+		D_m_matrix_single_block(dot, kernel_size)
+		for dot in dot_list
+	]
+	return np.vstack(list_mat), np.hstack(joystick_list)
 
 def _expFredFct(x, tau1, tau2, alpha):
 	return np.exp(-x / tau1) * (1 - np.exp(- x / tau2)) ** alpha
