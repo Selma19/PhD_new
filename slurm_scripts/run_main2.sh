@@ -11,8 +11,12 @@
 #SBATCH --qos=2h
 
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=1
-# ram per cpu
+#SBATCH --cpus-per-task=50
+
+# ram per cpu:
+# if the ram requested is not large enough when multiple nodes
+# are used, you may not get an OOM error, just some of the processes will wait,
+# doing nothing until the time limit is reached
 #SBATCH --mem-per-cpu=4G
 
 # redirection of standard error and output
@@ -30,16 +34,18 @@ cp ../data/solo/kernel.db $SHARED_TMPDIR
 
 echo "kernel transferred to shared location"
 
-for ((i=0; i<$SLURM_JOB_NUM_NODES; i++))
+n_scripts=$SLURM_JOB_NUM_NODES
+
+for ((i=0; i<$n_scripts; i++))
 do
-    srun --nodes=1 --exclusive bash _run_main2.sh $i $SLURM_JOB_NUM_NODES &
+    srun --nodes=1 --exclusive bash _run_main2.sh $i $n_scripts &
 done
 
 wait
 
 echo "aggregating all pieces into a single database..."
 
-srun --nodes=1 ../venv/bin/python ../src/merge_kernel_dbs.py
+srun --nodes=1 --exclusive ../venv/bin/python ../src/merge_kernel_dbs.py
 
 echo "transferring back the kernel database..."
 
