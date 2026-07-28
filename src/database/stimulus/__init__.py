@@ -19,7 +19,7 @@ class Stimulus_db(Database):
     Time steps are expressed in ms and angles in radians.
     """
 
-    def __init__(self, location: str| None=None):
+    def __init__(self, location=None):
         super().__init__()
         if location is None:
             self.db_path = __file__

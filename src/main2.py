@@ -9,7 +9,7 @@ So instead, we parallelize at the level of the triples (17 triples per row,
 so 17 * 568 tasks that can be handled independently).
 """
 from database import Kernel_db
-import sys
+import sys, os
 
 if __name__ == "__main__":
     # collect arguments sent to the program
@@ -19,8 +19,9 @@ if __name__ == "__main__":
 
     db = Kernel_db(location='memory')
     db._fill_kernels(
-        max_rows_per_cpu=1,
-        n_cpus_max=1,
+        max_rows_per_cpu=2,
+        n_cpus_max=int(os.environ["SLURM_CPUS_PER_TASK"]),
         script_num=script_num,
-        n_scripts=n_scripts
+        n_scripts=n_scripts,
+        debug=False
     )

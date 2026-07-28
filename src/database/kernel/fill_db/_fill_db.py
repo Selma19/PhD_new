@@ -6,7 +6,7 @@ from nautilus import Sampler, Prior
 import json
 
 from .utils import (
-	Js_Mat_for_blocks, Dataset, exponential_Fred,
+	Js_Mat_for_blocks, Dataset, exponential_Fred, EmptyDataset,
 	vectorized_exp_Fred, exp_Fred_inv, vectorized_exp_Fred_inv, exp_Fred_jumps
 )
 from ...stimulus import Stimulus_db
@@ -716,7 +716,10 @@ def _load_dataset_remove_after(
 	for the filtering option 'remove_after_tgt'.
 	"""
 	joystick_list, dot_list = load_fragments(agent, coh, min_length=300, db_location=db_location)
-	return Js_Mat_for_blocks(joystick_list, dot_list, 300)
+	if joystick_list and dot_list:
+		return Js_Mat_for_blocks(joystick_list, dot_list, 300)
+	else:
+		raise EmptyDataset
 
 def load_dataset(
 	agent: str,
@@ -878,7 +881,8 @@ def crossVal(
 		'curve_fit', 'nested_sampling',
 		'lasso', 'ridge', 'linear_reg', 'elastic'
 	],
-	method_param: Union[str, Tuple[float, ...]]='no_param'
+	method_param: Union[str, Tuple[float, ...]]='no_param',
+	debug=False
 ):
 	"""Finds the kernel among the space defined by `kernel_type`,
 	that leads to the minimum error on `train_set`.
@@ -887,6 +891,9 @@ def crossVal(
 	K-fold cross-validation is used to estimate the test error.
 	The model parameters returned are those which minimize the sum of the train and test
 	errors across all splits of the dataset.
+
+	In debug mode, returns dummy data (cheap to produce), of the same type as
+	the data returned in non-debug mode.
 	"""
 	testRatio = 0.3
 	kernel_outputs = []
@@ -900,6 +907,19 @@ def crossVal(
 		model = Param1_kernel()
 	else:
 		raise ValueError("check the value of 'kernel_type'")
+
+	if debug:
+		for train_set, test_set in splitData(dataset, testRatio):
+			pass
+
+		if kernel_type == 'raw':
+			kernel = np.random.rand(600)
+			kernel_output = [kernel[:300].tolist(), kernel[300:].tolist()]
+		elif kernel_type == 'param1':
+			kernel_output = {
+				'tau1': 0.1, 'tau2': 0.1, 'alpha': 3, 'd': 0.5, 'A': 0.1
+			}
+		return kernel_output, 0.0, 0.0
 
 	# split the dataset into a training and test sets
 	for train_set, test_set in splitData(dataset, testRatio):
@@ -920,4 +940,4 @@ def crossVal(
 
 	tab = zip(kernel_outputs, [x + y for x, y in zip(train_errors, test_errors)])
 	kernel_output = min(tab, key=lambda el: el[1])[0]
-	return kernel_output, np.mean(train_error), np.mean(test_error)
+	return kernel_output, np.mean(train_errors), np.mean(test_errors)
