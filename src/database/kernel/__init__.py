@@ -251,6 +251,7 @@ class Kernel_db(Database):
         self.connect()
         # for each row of Main and each triple, compute the kernels and evaluate them
         n_rows = len(self.cur.execute("""SELECT * FROM Main""").fetchall())
+        n_rows = 6
         self.close()
 
         n_cpus = min(n_cpus_max, mp.cpu_count())

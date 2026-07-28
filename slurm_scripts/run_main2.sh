@@ -4,14 +4,14 @@
 # partition
 #SBATCH -p cidbn
 # nb of nodes
-#SBATCH --nodes=10
+#SBATCH --nodes=6
 # time limit hh:mm:ss
 #SBATCH -t 01:40:00
 # reduce the queuing time if time is less than 2 hours
 #SBATCH --qos=2h
 
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=50
+#SBATCH --cpus-per-task=1
 # ram per cpu
 #SBATCH --mem-per-cpu=4G
 
@@ -27,6 +27,8 @@ source ../venv/bin/activate
 
 # this will be the database where all data will be aggregated after computation
 cp ../data/solo/kernel.db $SHARED_TMPDIR
+
+echo "kernel transferred to shared location"
 
 for ((i=0; i<$SLURM_JOB_NUM_NODES; i++))
 do

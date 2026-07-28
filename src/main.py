@@ -120,7 +120,14 @@ if __name__ == "__main__":
     except:
         script_num = 0
         n_scripts = 1
-    
+
+    db = Kernel_db()
+    db.clear()
+    db.create()
+    db.connect()
+    db._fill_main()
+    exit()
+
     db = Kernel_db(location='memory')
     db._fill_kernels(
         max_rows_per_cpu=2,

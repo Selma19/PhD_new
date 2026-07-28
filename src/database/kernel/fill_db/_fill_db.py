@@ -850,7 +850,7 @@ def fit_kernel(
 	kernel_fct = model.read_kernel_from_out()
 	return model.out, kernel_fct
 
-def splitData(dataset: Dataset, testRatio: float) -> List[Tuple[Dataset, Dataset]]:
+def splitData(dataset: Dataset, testRatio: float):
 	"""Returns a list of pairs (train, test) data.
 	
 	Parameters
@@ -859,7 +859,6 @@ def splitData(dataset: Dataset, testRatio: float) -> List[Tuple[Dataset, Dataset
 		fraction of the number of samples contained in each test set
 	"""
 	Mat, Js = dataset
-	res = []
 	n = len(Js)
 	test_size = int(n * testRatio)
 
@@ -870,13 +869,7 @@ def splitData(dataset: Dataset, testRatio: float) -> List[Tuple[Dataset, Dataset
 		train_indices = window[:test_size]
 		test_indices = window[test_size:]
 
-		res.append(
-			(
-				(Mat[train_indices], Js[train_indices]),
-				(Mat[test_indices], Js[test_indices])
-			)
-		)
-	return res
+		yield (Mat[train_indices], Js[train_indices]), (Mat[test_indices], Js[test_indices])
 
 def crossVal(
 	dataset: Dataset,
