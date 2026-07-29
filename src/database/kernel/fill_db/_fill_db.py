@@ -4,6 +4,7 @@ from scipy.optimize import curve_fit
 from sklearn import linear_model
 from nautilus import Sampler, Prior
 import json
+import time
 
 from .utils import (
 	Js_Mat_for_blocks, Dataset, exponential_Fred, EmptyDataset,
@@ -632,7 +633,7 @@ def load_fragments(
 	agent: str,
 	coh: float,
 	min_length: int,
-	db_location=None
+	db: Stimulus_db
 ):
 	"""Returns the fragments of the joystick and mean dot direction time series
 	after the filtering 'remove_after_tgt'.
@@ -645,62 +646,47 @@ def load_fragments(
 	dot_list : List[List]
 		same as `joystick_list`, but for the mean dot direction time series
 	"""
-	# connect to the stimulus db
-	db = Stimulus_db(location=db_location)
-	db.connect()
-
-	# get all unique couples (xp, block)
-	xp_blocks = db.cur.execute("""
-		SELECT DISTINCT xp, block FROM Main
-	""").fetchall()
-	db.close()
-
 	# for each block and xp, load the joystick, dot, time steps, nominal angle
 	# and target time steps data (pretty much everything)
 	# then filter the data before accumulating them
 	joystick_list = []; dot_list = []
-	for xp, block in xp_blocks:
-		db.connect()
-		row = db.cur.execute("""
-			SELECT
-				times,
-				nominal_angle,
-				target_times,
-				joystick,
-				mean_dot
-			FROM
-				Main
-			WHERE
-				agent = ?
-				AND coh = ?
-				AND xp = ?
-				AND block = ?
-		""", (agent, coh, xp, block)).fetchone()
-		db.close()
+	rows = db.cur.execute("""
+		SELECT
+			times,
+			nominal_angle,
+			target_times,
+			joystick,
+			mean_dot
+		FROM
+			Main
+		WHERE
+			agent = ?
+			AND coh = ?
+	""", (agent, coh)).fetchall()
 
-		if row is not None:
-			# the time steps at which the joystick and dot data are sampled
-			ts = json.loads(row[0])
+	for row in rows:
+		# the time steps at which the joystick and dot data are sampled
+		ts = json.loads(row[0])
 
-			# the exact times at which a change in nominal direction occurs
-			nom_ts, _ = zip(*json.loads(row[1]))
+		# the exact times at which a change in nominal direction occurs
+		nom_ts, _ = zip(*json.loads(row[1]))
 
-			tgt_ts = json.loads(row[2])
+		tgt_ts = json.loads(row[2])
 
-			tab = np.array(json.loads(row[3]))
-			joystick = tab[0, :] * np.exp(1j * tab[1, :])
+		tab = np.array(json.loads(row[3]))
+		joystick = tab[0, :] * np.exp(1j * tab[1, :])
 
-			tab = np.array(json.loads(row[4]))
-			dot = tab[0, :] + 1j * tab[1, :]
+		tab = np.array(json.loads(row[4]))
+		dot = tab[0, :] + 1j * tab[1, :]
 
-			# filter the dot and joystick time series
-			joysticks_, dots_ = _filter_remove_after(
-				joystick, dot, ts, nom_ts, tgt_ts
-			)
+		# filter the dot and joystick time series
+		joysticks_, dots_ = _filter_remove_after(
+			joystick, dot, ts, nom_ts, tgt_ts
+		)
 
-			# accumulate the filtered data
-			joystick_list.extend(joysticks_)
-			dot_list.extend(dots_)
+		# accumulate the filtered data
+		joystick_list.extend(joysticks_)
+		dot_list.extend(dots_)
 
 	# keep only the time series that are long enough
 	joystick_list = [el for el in joystick_list if len(el) >= min_length]
@@ -710,12 +696,12 @@ def load_fragments(
 def _load_dataset_remove_after(
 	agent: str,
 	coh: float,
-	db_location=None
+	db: Stimulus_db
 ) -> Dataset:
 	"""Returns the dataset loaded from the stimulus db
 	for the filtering option 'remove_after_tgt'.
 	"""
-	joystick_list, dot_list = load_fragments(agent, coh, min_length=300, db_location=db_location)
+	joystick_list, dot_list = load_fragments(agent, coh, min_length=300, db=db)
 	if joystick_list and dot_list:
 		return Js_Mat_for_blocks(joystick_list, dot_list, 300)
 	else:
@@ -725,7 +711,7 @@ def load_dataset(
 	agent: str,
 	coh: float,
 	filtering_method: Literal['unfiltered', 'remove_after_tgt'],
-	db_location=None
+	db: Stimulus_db
 ) -> Dataset:
 	"""Returns in this order the dot and joystick directions under a canonical matrix form.
 
@@ -745,8 +731,6 @@ def load_dataset(
 		if 'remove_after_tgt', the time steps following the apperance of a target are removed
 	"""
 	if filtering_method == 'unfiltered':
-		db = Stimulus_db(location=db_location)
-		db.connect()
 		raw_signal = db.cur.execute("""
 			SELECT joystick, mean_dot
 			FROM Main
@@ -754,7 +738,6 @@ def load_dataset(
 				coh = ?
 				AND agent = ?
 		""", (coh, agent)).fetchall()
-		db.close()
 
 		J_list = []
 		D_list = []
@@ -772,7 +755,7 @@ def load_dataset(
 		return Js_Mat_for_blocks(J_list, D_list, 300)
 
 	elif filtering_method == 'remove_after_tgt':
-		return _load_dataset_remove_after(agent, coh, db_location=db_location)
+		return _load_dataset_remove_after(agent, coh, db)
 
 	else:
 		raise ValueError("check the value of 'filtering_method'")

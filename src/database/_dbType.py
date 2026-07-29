@@ -17,13 +17,23 @@ class Database:
         self.db_path = ""
         self.db_name = ".db"
 
-    def connect(self):
-        """Creates a `sqlite3` connexion with the database."""
+    def connect(self,
+        read_uncommitted=False,
+        uri_suffix: str | None=None
+    ):
+        """Creates a `sqlite3` connexion with the database and a cursor."""
+        filepath = os.path.join(self.db_path, self.db_name)
         if self.conn is None:
-            self.conn = sqlite3.connect(
-                os.path.join(self.db_path, self.db_name)
-            )
-            self.conn.execute("PRAGMA foreign_keys = ON;")
+            if uri_suffix is None:
+                self.conn = sqlite3.connect(filepath)
+            else:
+                self.conn = sqlite3.connect(
+                    f"file:{filepath}{uri_suffix}",
+                    uri=True
+                )
+            #self.conn.execute("PRAGMA foreign_keys = ON;")
+            if read_uncommitted:
+                self.conn.execute("PRAGMA read_uncommitted = True;")
             self.cur = self.conn.cursor()
 
     def close(self):

@@ -2,8 +2,12 @@
 
 import subprocess, os, json
 import multiprocessing as mp
+import time
 
-from .fill_db import crossVal, fit_kernel, evaluate, read_kernel, load_dataset, load_fragments
+from .fill_db import (
+    crossVal, fit_kernel, evaluate,
+    read_kernel, load_dataset, load_fragments
+)
 from .fill_db.utils import EmptyDataset
 from .._dbType import Database
 from ..stimulus import Stimulus_db
@@ -160,7 +164,13 @@ class Kernel_db(Database):
         rows = []
 
         try:
-            dataset = load_dataset(*row_main[1:], db_location=self.location)
+            stim_db = Stimulus_db(location=self.location)
+            stim_db.connect(
+                read_uncommitted=True,
+                uri_suffix="?mode=ro&cache=shared"
+            )
+            dataset = load_dataset(*row_main[1:], db=stim_db)
+            stim_db.close()
         except EmptyDataset:
             rows = [
                 (row_main[0], None, None, None, *triple)
@@ -191,10 +201,13 @@ class Kernel_db(Database):
 
         # specify a subset of triples (kernel_type, kernel_method, method_param)
         triples = [('raw', 'linear_reg', json.dumps('no_param'))]
-        for kernel_method in ['lasso', 'ridge']:
+        triples = []
+        """
+        for kernel_method in ['lasso']:#['lasso', 'ridge']:
             triples.extend(
                 [('raw', kernel_method, json.dumps(param)) for param in method_params]
             )
+        """
         for kernel_method in ['nested_sampling']:
             triples.append( ('param1', kernel_method, json.dumps('no_param')) )
         return triples
@@ -212,7 +225,6 @@ class Kernel_db(Database):
         self.close()
 
         list_args = [(debug, row) for row in main_rows]
-
         with mp.Pool( processes=min(n_cpus, len(main_rows)) ) as pool:
             # list_rows is a list of list of tuples
             list_rows = pool.map(self._kernel_single_row, list_args)
@@ -270,9 +282,9 @@ class Kernel_db(Database):
         self.connect()
         # for each row of Main and each triple, compute the kernels and evaluate them
         n_rows = len(self.cur.execute("""SELECT * FROM Main""").fetchall())
+        n_rows = max_rows_per_cpu * n_scripts * n_cpus_max
         if debug:
             n_rows = max_rows_per_cpu * n_scripts * n_cpus_max
-        self.close()
 
         key1, key2 = self._get_main_keys(
             n_cpus=n_cpus_max, max_rows_per_cpu=max_rows_per_cpu, n_scripts=n_scripts,
@@ -281,7 +293,7 @@ class Kernel_db(Database):
 
         print(f"processing rows {key1} to {key2 - 1}, script nb {script_num}")
 
-        self.connect()
+        t = time.perf_counter()
         main_rows = self.cur.execute("""
             SELECT *
             FROM Main
@@ -293,6 +305,7 @@ class Kernel_db(Database):
         self._fill_kernels_chunk(main_rows, n_cpus=n_cpus_max, debug=debug)
 
         print(f"Kernels table filled, script nb {script_num}")
+        print(f"time to kernel chunk: {time.perf_counter() - t}")
         print()
 
     def _read_kernel_fct(self, kernel_key: int):
