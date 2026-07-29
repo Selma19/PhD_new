@@ -1,6 +1,6 @@
 #!/bin/bash
 # custom name
-#SBATCH --job-name=fill_kernels_kernel
+#SBATCH --job-name=nautilus_with_cpu_binding
 # partition
 #SBATCH -p cidbn
 # nb of nodes
@@ -17,7 +17,7 @@
 # if the ram requested is not large enough when multiple nodes
 # are used, you may not get an OOM error, just some of the processes will wait,
 # doing nothing until the time limit is reached
-#SBATCH --mem-per-cpu=4G
+#SBATCH --mem-per-cpu=3G
 
 # redirection of standard error and output
 #SBATCH -o ../slurm-files/%x-%J.out
@@ -38,7 +38,7 @@ n_scripts=$SLURM_JOB_NUM_NODES
 
 for ((i=0; i<$n_scripts; i++))
 do
-    srun --nodes=1 --exclusive bash _run_main2.sh $i $n_scripts &
+    srun --cpu_bind=cores --nodes=1 --exclusive bash _run_main2.sh $i $n_scripts &
 done
 
 wait
