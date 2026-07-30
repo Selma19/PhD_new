@@ -4,9 +4,10 @@ from scipy.optimize import curve_fit
 from sklearn import linear_model
 from nautilus import Sampler, Prior
 import json
+import time
 
 from .utils import (
-	Js_Mat_for_blocks, Dataset, exponential_Fred,
+	Js_Mat_for_blocks, Dataset, exponential_Fred, EmptyDataset,
 	vectorized_exp_Fred, exp_Fred_inv, vectorized_exp_Fred_inv, exp_Fred_jumps
 )
 from ...stimulus import Stimulus_db
@@ -632,7 +633,7 @@ def load_fragments(
 	agent: str,
 	coh: float,
 	min_length: int,
-	db_location=None
+	db: Stimulus_db
 ):
 	"""Returns the fragments of the joystick and mean dot direction time series
 	after the filtering 'remove_after_tgt'.
@@ -645,62 +646,47 @@ def load_fragments(
 	dot_list : List[List]
 		same as `joystick_list`, but for the mean dot direction time series
 	"""
-	# connect to the stimulus db
-	db = Stimulus_db(location=db_location)
-	db.connect()
-
-	# get all unique couples (xp, block)
-	xp_blocks = db.cur.execute("""
-		SELECT DISTINCT xp, block FROM Main
-	""").fetchall()
-	db.close()
-
 	# for each block and xp, load the joystick, dot, time steps, nominal angle
 	# and target time steps data (pretty much everything)
 	# then filter the data before accumulating them
 	joystick_list = []; dot_list = []
-	for xp, block in xp_blocks:
-		db.connect()
-		row = db.cur.execute("""
-			SELECT
-				times,
-				nominal_angle,
-				target_times,
-				joystick,
-				mean_dot
-			FROM
-				Main
-			WHERE
-				agent = ?
-				AND coh = ?
-				AND xp = ?
-				AND block = ?
-		""", (agent, coh, xp, block)).fetchone()
-		db.close()
+	rows = db.cur.execute("""
+		SELECT
+			times,
+			nominal_angle,
+			target_times,
+			joystick,
+			mean_dot
+		FROM
+			Main
+		WHERE
+			agent = ?
+			AND coh = ?
+	""", (agent, coh)).fetchall()
 
-		if row is not None:
-			# the time steps at which the joystick and dot data are sampled
-			ts = json.loads(row[0])
+	for row in rows:
+		# the time steps at which the joystick and dot data are sampled
+		ts = json.loads(row[0])
 
-			# the exact times at which a change in nominal direction occurs
-			nom_ts, _ = zip(*json.loads(row[1]))
+		# the exact times at which a change in nominal direction occurs
+		nom_ts, _ = zip(*json.loads(row[1]))
 
-			tgt_ts = json.loads(row[2])
+		tgt_ts = json.loads(row[2])
 
-			tab = np.array(json.loads(row[3]))
-			joystick = tab[0, :] * np.exp(1j * tab[1, :])
+		tab = np.array(json.loads(row[3]))
+		joystick = tab[0, :] * np.exp(1j * tab[1, :])
 
-			tab = np.array(json.loads(row[4]))
-			dot = tab[0, :] + 1j * tab[1, :]
+		tab = np.array(json.loads(row[4]))
+		dot = tab[0, :] + 1j * tab[1, :]
 
-			# filter the dot and joystick time series
-			joysticks_, dots_ = _filter_remove_after(
-				joystick, dot, ts, nom_ts, tgt_ts
-			)
+		# filter the dot and joystick time series
+		joysticks_, dots_ = _filter_remove_after(
+			joystick, dot, ts, nom_ts, tgt_ts
+		)
 
-			# accumulate the filtered data
-			joystick_list.extend(joysticks_)
-			dot_list.extend(dots_)
+		# accumulate the filtered data
+		joystick_list.extend(joysticks_)
+		dot_list.extend(dots_)
 
 	# keep only the time series that are long enough
 	joystick_list = [el for el in joystick_list if len(el) >= min_length]
@@ -710,19 +696,22 @@ def load_fragments(
 def _load_dataset_remove_after(
 	agent: str,
 	coh: float,
-	db_location=None
+	db: Stimulus_db
 ) -> Dataset:
 	"""Returns the dataset loaded from the stimulus db
 	for the filtering option 'remove_after_tgt'.
 	"""
-	joystick_list, dot_list = load_fragments(agent, coh, min_length=300, db_location=db_location)
-	return Js_Mat_for_blocks(joystick_list, dot_list, 300)
+	joystick_list, dot_list = load_fragments(agent, coh, min_length=300, db=db)
+	if joystick_list and dot_list:
+		return Js_Mat_for_blocks(joystick_list, dot_list, 300)
+	else:
+		raise EmptyDataset
 
 def load_dataset(
 	agent: str,
 	coh: float,
 	filtering_method: Literal['unfiltered', 'remove_after_tgt'],
-	db_location=None
+	db: Stimulus_db
 ) -> Dataset:
 	"""Returns in this order the dot and joystick directions under a canonical matrix form.
 
@@ -742,8 +731,6 @@ def load_dataset(
 		if 'remove_after_tgt', the time steps following the apperance of a target are removed
 	"""
 	if filtering_method == 'unfiltered':
-		db = Stimulus_db(location=db_location)
-		db.connect()
 		raw_signal = db.cur.execute("""
 			SELECT joystick, mean_dot
 			FROM Main
@@ -751,7 +738,6 @@ def load_dataset(
 				coh = ?
 				AND agent = ?
 		""", (coh, agent)).fetchall()
-		db.close()
 
 		J_list = []
 		D_list = []
@@ -769,7 +755,7 @@ def load_dataset(
 		return Js_Mat_for_blocks(J_list, D_list, 300)
 
 	elif filtering_method == 'remove_after_tgt':
-		return _load_dataset_remove_after(agent, coh, db_location=db_location)
+		return _load_dataset_remove_after(agent, coh, db)
 
 	else:
 		raise ValueError("check the value of 'filtering_method'")
@@ -878,7 +864,8 @@ def crossVal(
 		'curve_fit', 'nested_sampling',
 		'lasso', 'ridge', 'linear_reg', 'elastic'
 	],
-	method_param: Union[str, Tuple[float, ...]]='no_param'
+	method_param: Union[str, Tuple[float, ...]]='no_param',
+	debug=False
 ):
 	"""Finds the kernel among the space defined by `kernel_type`,
 	that leads to the minimum error on `train_set`.
@@ -887,6 +874,9 @@ def crossVal(
 	K-fold cross-validation is used to estimate the test error.
 	The model parameters returned are those which minimize the sum of the train and test
 	errors across all splits of the dataset.
+
+	In debug mode, returns dummy data (cheap to produce), of the same type as
+	the data returned in non-debug mode.
 	"""
 	testRatio = 0.3
 	kernel_outputs = []
@@ -900,6 +890,19 @@ def crossVal(
 		model = Param1_kernel()
 	else:
 		raise ValueError("check the value of 'kernel_type'")
+
+	if debug:
+		for train_set, test_set in splitData(dataset, testRatio):
+			pass
+
+		if kernel_type == 'raw':
+			kernel = np.random.rand(600)
+			kernel_output = [kernel[:300].tolist(), kernel[300:].tolist()]
+		elif kernel_type == 'param1':
+			kernel_output = {
+				'tau1': 0.1, 'tau2': 0.1, 'alpha': 3, 'd': 0.5, 'A': 0.1
+			}
+		return kernel_output, 0.0, 0.0
 
 	# split the dataset into a training and test sets
 	for train_set, test_set in splitData(dataset, testRatio):
@@ -920,4 +923,4 @@ def crossVal(
 
 	tab = zip(kernel_outputs, [x + y for x, y in zip(train_errors, test_errors)])
 	kernel_output = min(tab, key=lambda el: el[1])[0]
-	return kernel_output, np.mean(train_error), np.mean(test_error)
+	return kernel_output, np.mean(train_errors), np.mean(test_errors)

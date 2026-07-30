@@ -10,6 +10,11 @@ class Dataset:
 	The couple corresponds resp. to the dot and joystick directions.
 	"""
 
+class EmptyDataset(Exception):
+	"""Raised when the loaded dataset is empty
+	(may occur when the filtering method is not 'unfiltered').
+	"""
+
 def D_m_matrix_single_block(D_m, kernelSize: int):
 	mat = np.zeros((len(D_m), kernelSize), dtype=complex)
 

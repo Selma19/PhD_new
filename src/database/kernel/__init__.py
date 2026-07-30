@@ -2,8 +2,13 @@
 
 import subprocess, os, json
 import multiprocessing as mp
+import time
 
-from .fill_db import crossVal, fit_kernel, evaluate, read_kernel, load_dataset, load_fragments
+from .fill_db import (
+    crossVal, fit_kernel, evaluate,
+    read_kernel, load_dataset, load_fragments
+)
+from .fill_db.utils import EmptyDataset
 from .._dbType import Database
 from ..stimulus import Stimulus_db
 
@@ -40,6 +45,7 @@ class Kernel_db(Database):
         elif location == 'memory':
             self.db_path = os.environ['LOCAL_TMPDIR']
         self.db_name = "kernel.db"
+        self.location = location
 
     def visu(self):
         """We have 2 figures:
@@ -148,19 +154,34 @@ class Kernel_db(Database):
         print("Main table filled")
         print()
 
-    def _kernel_single_row(self, row_main: tuple):
+    def _kernel_single_row(self, arg: tuple):
         """Processes a single row of the `Main` table from the `Stimulus` database.
         
         Returns a list of rows to be inserted in the `Kernels` table of the `Kernel` database.
         """
+        debug, row_main = arg
         # rows to insert into the Kernels table
         rows = []
 
-        dataset = load_dataset(*row_main[1:])
+        try:
+            stim_db = Stimulus_db(location=self.location)
+            stim_db.connect(
+                read_uncommitted=True,
+                uri_suffix="?mode=ro&cache=shared"
+            )
+            dataset = load_dataset(*row_main[1:], db=stim_db)
+            stim_db.close()
+        except EmptyDataset:
+            rows = [
+                (row_main[0], None, None, None, *triple)
+                for triple in self._gen_triples()
+            ]
+            return rows
 
         for triple in self._gen_triples():
             kernel_output, train_error, test_error = crossVal(
-                dataset, *triple[:2], json.loads(triple[2])
+                dataset, *triple[:2], json.loads(triple[2]),
+                debug=debug
             )
 
             # make sure the data format of the row is correct
@@ -180,24 +201,33 @@ class Kernel_db(Database):
 
         # specify a subset of triples (kernel_type, kernel_method, method_param)
         triples = [('raw', 'linear_reg', json.dumps('no_param'))]
-        for kernel_method in ['lasso', 'ridge']:
+        triples = []
+        """
+        for kernel_method in ['lasso']:#['lasso', 'ridge']:
             triples.extend(
                 [('raw', kernel_method, json.dumps(param)) for param in method_params]
             )
+        """
         for kernel_method in ['nested_sampling']:
             triples.append( ('param1', kernel_method, json.dumps('no_param')) )
         return triples
 
-    def _fill_kernels_chunk(self, main_rows: list, n_cpus: int):
+    def _fill_kernels_chunk(
+        self,
+        main_rows: list,
+        n_cpus: int,
+        debug=False
+    ):
         """Processes in parallel each row contained in `main_rows`.
         """
         # make sure to close the connection to the db to avoid multiprocessing to
         # raise an error about not being able to pickle a sqlite3.Connection object
         self.close()
 
+        list_args = [(debug, row) for row in main_rows]
         with mp.Pool( processes=min(n_cpus, len(main_rows)) ) as pool:
             # list_rows is a list of list of tuples
-            list_rows = pool.map(self._kernel_single_row, main_rows)
+            list_rows = pool.map(self._kernel_single_row, list_args)
 
         rows = []
         for el in list_rows:
@@ -246,23 +276,24 @@ class Kernel_db(Database):
         max_rows_per_cpu: int,
         n_cpus_max: int,
         script_num: int=0,
-        n_scripts: int=1
+        n_scripts: int=1,
+        debug=False
     ):
         self.connect()
         # for each row of Main and each triple, compute the kernels and evaluate them
         n_rows = len(self.cur.execute("""SELECT * FROM Main""").fetchall())
-        n_rows = 10
-        self.close()
+        n_rows = max_rows_per_cpu * n_scripts * n_cpus_max
+        if debug:
+            n_rows = max_rows_per_cpu * n_scripts * n_cpus_max
 
-        n_cpus = min(n_cpus_max, mp.cpu_count())
         key1, key2 = self._get_main_keys(
-            n_cpus=n_cpus, max_rows_per_cpu=max_rows_per_cpu, n_scripts=n_scripts,
+            n_cpus=n_cpus_max, max_rows_per_cpu=max_rows_per_cpu, n_scripts=n_scripts,
             script_num=script_num, nn_rows=n_rows
         )
 
         print(f"processing rows {key1} to {key2 - 1}, script nb {script_num}")
 
-        self.connect()
+        t = time.perf_counter()
         main_rows = self.cur.execute("""
             SELECT *
             FROM Main
@@ -271,9 +302,10 @@ class Kernel_db(Database):
                 AND id < ?
         """, (key1, key2)).fetchall()
         self.close()
-        self._fill_kernels_chunk(main_rows, n_cpus=n_cpus)
+        self._fill_kernels_chunk(main_rows, n_cpus=n_cpus_max, debug=debug)
 
         print(f"Kernels table filled, script nb {script_num}")
+        print(f"time to kernel chunk: {time.perf_counter() - t}")
         print()
 
     def _read_kernel_fct(self, kernel_key: int):
