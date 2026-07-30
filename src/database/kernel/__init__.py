@@ -184,7 +184,7 @@ class Kernel_db(Database):
             triples.extend(
                 [('raw', kernel_method, json.dumps(param)) for param in method_params]
             )
-        for kernel_method in ['curve_fit', 'nested_sampling']:
+        for kernel_method in ['nested_sampling']:
             triples.append( ('param1', kernel_method, json.dumps('no_param')) )
         return triples
 
@@ -251,7 +251,7 @@ class Kernel_db(Database):
         self.connect()
         # for each row of Main and each triple, compute the kernels and evaluate them
         n_rows = len(self.cur.execute("""SELECT * FROM Main""").fetchall())
-        n_rows = 6
+        n_rows = 10
         self.close()
 
         n_cpus = min(n_cpus_max, mp.cpu_count())
