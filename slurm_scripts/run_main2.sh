@@ -1,12 +1,12 @@
 #!/bin/bash
 # custom name
-#SBATCH --job-name=nautilus_with_cpu_binding
+#SBATCH --job-name=lasso_ridge_1_node_50_cpus
 # partition
 #SBATCH -p cidbn
 # nb of nodes
-#SBATCH --nodes=6
+#SBATCH --nodes=1
 # time limit hh:mm:ss
-#SBATCH -t 01:40:00
+#SBATCH -t 00:30:00
 # reduce the queuing time if time is less than 2 hours
 #SBATCH --qos=2h
 
@@ -38,7 +38,7 @@ n_scripts=$SLURM_JOB_NUM_NODES
 
 for ((i=0; i<$n_scripts; i++))
 do
-    srun --cpu_bind=cores --nodes=1 --exclusive bash _run_main2.sh $i $n_scripts &
+    srun --nodes=1 --exclusive bash _run_main2.sh $i $n_scripts &
 done
 
 wait

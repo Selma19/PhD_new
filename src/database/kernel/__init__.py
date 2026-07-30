@@ -202,14 +202,14 @@ class Kernel_db(Database):
         # specify a subset of triples (kernel_type, kernel_method, method_param)
         triples = [('raw', 'linear_reg', json.dumps('no_param'))]
         triples = []
-        """
-        for kernel_method in ['lasso']:#['lasso', 'ridge']:
+        for kernel_method in ['lasso', 'ridge']:
             triples.extend(
                 [('raw', kernel_method, json.dumps(param)) for param in method_params]
             )
         """
         for kernel_method in ['nested_sampling']:
             triples.append( ('param1', kernel_method, json.dumps('no_param')) )
+        """
         return triples
 
     def _fill_kernels_chunk(
