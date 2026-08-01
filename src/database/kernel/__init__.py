@@ -201,15 +201,12 @@ class Kernel_db(Database):
 
         # specify a subset of triples (kernel_type, kernel_method, method_param)
         triples = [('raw', 'linear_reg', json.dumps('no_param'))]
-        triples = []
         for kernel_method in ['lasso', 'ridge']:
             triples.extend(
                 [('raw', kernel_method, json.dumps(param)) for param in method_params]
             )
-        """
         for kernel_method in ['nested_sampling']:
             triples.append( ('param1', kernel_method, json.dumps('no_param')) )
-        """
         return triples
 
     def _fill_kernels_chunk(
@@ -224,8 +221,16 @@ class Kernel_db(Database):
         # raise an error about not being able to pickle a sqlite3.Connection object
         self.close()
 
-        list_args = [(debug, row) for row in main_rows]
-        with mp.Pool( processes=min(n_cpus, len(main_rows)) ) as pool:
+        if debug:
+            # make sure each process gets the same row to process
+            list_args = [(debug, main_rows[0]) for row in main_rows]
+        else:
+            list_args = [(debug, row) for row in main_rows]
+
+        n_processes = min(n_cpus, len(main_rows))
+        print(f"nb of processes: {n_processes}")
+
+        with mp.Pool( processes=n_processes) as pool:
             # list_rows is a list of list of tuples
             list_rows = pool.map(self._kernel_single_row, list_args)
 
@@ -281,8 +286,8 @@ class Kernel_db(Database):
     ):
         self.connect()
         # for each row of Main and each triple, compute the kernels and evaluate them
-        n_rows = len(self.cur.execute("""SELECT * FROM Main""").fetchall())
-        n_rows = max_rows_per_cpu * n_scripts * n_cpus_max
+        # n_rows = len(self.cur.execute("""SELECT * FROM Main""").fetchall())
+        n_rows = 100
         if debug:
             n_rows = max_rows_per_cpu * n_scripts * n_cpus_max
 

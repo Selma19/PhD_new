@@ -1,14 +1,14 @@
 #!/bin/bash
 # custom name
-#SBATCH --job-name=lasso_ridge_1_node_50_cpus
+#SBATCH --job-name=fill_kernels_kernel
 # partition
 #SBATCH -p cidbn
 # nb of nodes
-#SBATCH --nodes=1
+#SBATCH --nodes=6
 # time limit hh:mm:ss
-#SBATCH -t 00:30:00
+#SBATCH -t 20:00:00
 # reduce the queuing time if time is less than 2 hours
-#SBATCH --qos=2h
+##SBATCH --qos=2h
 
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=50
@@ -23,13 +23,13 @@
 #SBATCH -o ../slurm-files/%x-%J.out
 #SBATCH -e ../slurm-files/%x-%J.err
 
-# limit the nb of OpenMP threads tp 1 to avoid multiple levels
+# limit the nb of OpenMP threads to 1 to avoid multiple levels
 # of parallelism (e.g. numpy uses OpenMP)
 export OMP_NUM_THREADS=1
 
 source ../venv/bin/activate
 
-# this will be the database where all data will be aggregated after computation
+# this is the database where data from the different nodes are aggregated after computation
 cp ../data/solo/kernel.db $SHARED_TMPDIR
 
 echo "kernel transferred to shared location"

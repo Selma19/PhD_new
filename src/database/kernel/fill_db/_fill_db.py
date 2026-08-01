@@ -425,6 +425,20 @@ class Param1_kernel(Kernel):
 		ydata = np.concatenate( (ydata.real, ydata.imag) )
 		return xdata, ydata
 
+	def _format_dataset_NS(self, dataset: Dataset, n_batch: int):
+		xdata, ydata = dataset
+		xdata = np.concatenate( (xdata.real, xdata.imag), axis=1 )
+		xdata = np.tile(xdata, (2, 1))
+		xdata = np.concatenate(
+			(
+				xdata[:len(xdata) // 2, :300].T,
+				xdata[:len(xdata) // 2, 300:].T
+			), axis=1
+		)
+		ydata = np.concatenate( (ydata.real, ydata.imag) )
+		targets = np.tile( ydata.reshape(1, -1), (n_batch, 1) )
+		return xdata, targets
+
 	def _train_curve_fit(self, train_set: Dataset):
 		# set the dot and joystick complex time series at the correct format
 		xdata, ydata = self._format_dataset(train_set)
@@ -459,33 +473,30 @@ class Param1_kernel(Kernel):
 		prior.add_parameter('d', dist=(0, 1))
 		prior.add_parameter('A', dist=(0, 10))
 
+		# build the xdata and targets
+		# nb of likelihood eval per nautilus sampler step
+		n_batch = 100
+		xdata, targets = self._format_dataset_NS(train_set, n_batch)
+
 		# define the likelihood (vectorized for performance):
 		# it is the fct to maximize, i.e. minus the error fct
 		# first we need to define the model, i.e. the mapping from
 		# the xdata (dot direction) to the ydata (joystick direction)
-		def vec_fct(dot_vec, *params):
+		def vec_fct(*params):
 			"""The function whose parameters are fitted, in a vectorized version.
 			
 			It takes a vector of size `kernel_size` and returns a complex number.
-			If `dot_vec` is of shape (n, kernel_size), then the result is of shape (n_params, n),
+			If `xdata` is of shape (n, kernel_size), then the result is of shape (n_params, n),
 			where n_params if the length of any element of `params`.
 			"""
-			ker = vectorized_exp_Fred(np.linspace(0, 1, 300), *params).T
+			ker = vectorized_exp_Fred(np.linspace(0, 1, 300), *params)
+			return np.dot(ker, xdata)
 
-			real_part = np.dot(dot_vec[:len(dot_vec) // 2, :300], ker)
-			imag_part = np.dot(dot_vec[:len(dot_vec) // 2, 300:], ker)
-			return np.concatenate( (real_part, imag_part) ).T
-
-		# second we need to build the xdata and ydata
-		xdata, ydata = self._format_dataset(train_set)
-
-		targets = np.tile( ydata.reshape(1, -1), (100, 1) )
 		def vec_likelihood(dict_param: Dict[str, List[float]]):
 			"""Keys should be the names of the parameters and each value is a `float`.
 			"""
 			params = [dict_param[key] for key in self.param_names]
-			mat = vec_fct(xdata, *params)
-			return -np.sum( (mat - targets) ** 2, axis=1 )
+			return -np.sum( (vec_fct(*params) - targets) ** 2, axis=1 )
 
 		# find the parameters that maximize the likelihood
 		sampler = Sampler(
