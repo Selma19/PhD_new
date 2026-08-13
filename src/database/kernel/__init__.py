@@ -286,8 +286,7 @@ class Kernel_db(Database):
     ):
         self.connect()
         # for each row of Main and each triple, compute the kernels and evaluate them
-        # n_rows = len(self.cur.execute("""SELECT * FROM Main""").fetchall())
-        n_rows = 100
+        n_rows = len(self.cur.execute("""SELECT * FROM Main""").fetchall())
         if debug:
             n_rows = max_rows_per_cpu * n_scripts * n_cpus_max
 

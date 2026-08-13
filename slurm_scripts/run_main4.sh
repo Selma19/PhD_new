@@ -2,7 +2,7 @@
 
 ###########################################################################################
 
-# After executing run_main4.sh, we got 6 chunks which we merge here to get the filled kernel table.
+# After executing run_main3.sh, we got 6 chunks which we merge here to get the filled kernel table.
 
 ###########################################################################################
 
