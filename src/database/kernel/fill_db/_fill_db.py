@@ -500,7 +500,7 @@ class Param1_kernel(Kernel):
 
 		# find the parameters that maximize the likelihood
 		sampler = Sampler(
-			prior, vec_likelihood, n_batch=n_batch
+			prior, vec_likelihood, n_batch=n_batch,
 			n_live=3000, vectorized=True, pass_dict=True
 		)
 		sampler.run(verbose=False, n_like_max=2e5)
