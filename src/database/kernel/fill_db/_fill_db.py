@@ -224,7 +224,7 @@ class Fit_param3(Fit_model):
 		self.param_names = [
 			'omega1', 'omega2', 'alpha', 'd', 'A', 'V0', 'V1'
 		]
-	
+
 	def _clean_kernel(self, kernel: np.ndarray):
 		y = kernel[1:-1]
 		diff_kernel = np.abs(y[1:] - y[:-1])

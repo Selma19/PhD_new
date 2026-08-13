@@ -203,7 +203,7 @@ def extract_all(agent: str):
     h5_files = [name for name in os.listdir(path) if name[-3:] == '.h5' and '.mwk2' not in name]
 
     rows = []
-    
+
     for h5_file in h5_files:
         with h5py.File(os.path.join(path, h5_file), "r") as f:
             # split the timeline into trials, meaning:
@@ -302,7 +302,7 @@ def extract_all(agent: str):
             joy_dir_values = f['value']['IO_joystickDirection'].astype('float64')
             joy_ecc_times = f['time']['IO_joystickStrength']
             joy_ecc_values = f['value']['IO_joystickStrength'].astype('float64')
-            
+
             for num, block in enumerate(blocks):
                 # coherence
                 coh = coh_values[block['coh']]

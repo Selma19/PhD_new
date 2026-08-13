@@ -20,12 +20,14 @@ Figure 3 (covariance btw parameters):
 then average this matrix over all agents and plot it
 """
 
+from typing import Literal
 import json, os, pickle
 import numpy as np
 from scipy.special import softmax
 import matplotlib.pyplot as plt
 
 from database import Kernel_db
+from database.kernel.fill_db.utils import exponential_Fred
 
 # directory for figures
 fig_dir = __file__
@@ -35,12 +37,11 @@ fig_dir = os.path.join(fig_dir, 'figures')
 
 k_type = 'param1'
 k_meth = 'nested_sampling'
-filtering_method = 'unfiltered'
 
 db = Kernel_db()
 db.connect()
 
-def get_dic():
+def get_dic(filtering_method: str, restrict_cohs=True):
     # get the rows id (main_key) in the Main table
     # that meet our needs
     rows = db.cur.execute("""
@@ -49,7 +50,7 @@ def get_dic():
         WHERE
             filtering_method = ?
         ORDER BY
-            coh
+            coh, agent
     """, (filtering_method,)).fetchall()
 
     # organize them as a list of lists where
@@ -70,9 +71,14 @@ def get_dic():
             dic.append([row[0]])
             cohs.append(coh)
 
+    if restrict_cohs:
+        idx_to_keep = range(0, len(cohs), 2)
+        cohs = [cohs[idx] for idx in idx_to_keep]
+        dic = [dic[idx] for idx in idx_to_keep]
+
     return cohs, dic
 
-def get_data(restrict_cohs=True):
+def get_data(cohs, dic):
     """For each id, get the kernel output, then
     the kernel parameters and their uncertainties:
     means[param_name] = [
@@ -80,13 +86,6 @@ def get_data(restrict_cohs=True):
       [mean_coh_2_agent1, mean_coh_2_agent2], ...
     ]
     """
-    cohs, dic = get_dic()
-
-    if restrict_cohs:
-        idx_to_keep = range(0, len(cohs), 2)
-        cohs = [cohs[idx] for idx in idx_to_keep]
-        dic = [dic[idx] for idx in idx_to_keep]
-
     stds = {}
     max_vals = {}
     means = {}
@@ -106,7 +105,6 @@ def get_data(restrict_cohs=True):
 
             points, log_w = json.loads(k_out)
             prob_w = softmax(log_w)
-
             for name, val in points.items():
                 tab = np.array(val)
                 mean = np.sum(prob_w * tab)
@@ -126,19 +124,67 @@ def get_data(restrict_cohs=True):
                     means[name][idx_coh].append(mean)
                     max_vals[name][idx_coh].append(max_val)
 
-    # store in the cache for reuse
-    cache_path = os.path.join(fig_dir, 'figure1', 'cache')
-    pickle.dump((cohs, means, stds, max_vals), file=open(cache_path, '+wb'))
-    return cohs, means, stds, max_vals
+    return means, stds, max_vals
 
-def figure1():
+def get_max_vals(cohs, dic):
+    """max_vals[param_name][idx_coh] = [
+        param(param_name, idx_coh, agent_k)
+    ]
+    """
+    max_vals = {}
+    for idx_coh, ids_by_coh in enumerate(dic):
+        print(f"{len(cohs) - idx_coh} steps remaining")
+        for main_key in ids_by_coh:
+            k_out = db.cur.execute("""
+                SELECT kernel_output
+                FROM Kernels
+                WHERE
+                    main_key = ?
+                AND
+                    kernel_type = ?
+                AND
+                    kernel_method = ?
+            """, (main_key, k_type, k_meth)).fetchone()[0]
+
+            points, log_w = json.loads(k_out)
+            idx_max = np.argmax(log_w)
+
+            for name, val in points.items():
+                max_val = val[idx_max]
+
+                if name in max_vals:
+                    max_vals[name][idx_coh].append(max_val)
+
+                else:
+                    max_vals[name] = [[] for _ in range(len(cohs))]
+                    max_vals[name][idx_coh].append(max_val)
+
+    return max_vals
+
+def figure1(
+        filtering_method: Literal['unfiltered', 'remove_after_tgt'],
+        use_cache: bool,
+        restrict_cohs: bool = True
+    ):
+    """Visualize parameters individually:
+    - one panel per parameter
+    - coherence as x axis
+    - parameter value as y axis, organized as violins (1 point per coh per agent)
+    - 3 plots per panel, one for most probable param, one for the means, one for the stds
+    """
     # load the cache or not
-    load_cache = True
-    restrict_cohs = True
-    if load_cache:
-        cohs, means, stds, max_vals = pickle.load(open(os.path.join(fig_dir, 'figure1', 'cache'), '+rb'))
+    if use_cache:
+        cohs, means, stds, max_vals = pickle.load(
+            open(os.path.join(fig_dir, 'figure1', 'cache_' + filtering_method), '+rb')
+        )
+
     else:
-        cohs, means, stds, max_vals = get_data(restrict_cohs=restrict_cohs)
+        cohs, dic = get_dic(filtering_method, restrict_cohs=restrict_cohs)
+        means, stds, max_vals = get_data(cohs, dic)
+
+        # store in the cache for reuse
+        cache_path = os.path.join(fig_dir, 'figure1', 'cache_' + filtering_method)
+        pickle.dump((cohs, means, stds, max_vals), file=open(cache_path, '+wb'))
 
     # plot the figure 1:
     # one panel per parameter;
@@ -150,7 +196,15 @@ def figure1():
     fontsize = 14
     for param in params:
         fig, axs = plt.subplots(3, 1, constrained_layout=True)
-        fig.suptitle(f"parameter {param}", fontsize=fontsize)
+        title = f"parameter {param}"
+
+        if filtering_method == 'unfiltered':
+            title += "; no filter"
+
+        else:
+            title += "; target influence removed"
+
+        fig.suptitle(title, fontsize=fontsize)
 
         # set the ticks and labels
         ## y axis
@@ -188,11 +242,146 @@ def figure1():
             showmeans=True, showextrema=True
         )
 
-        plt.savefig(os.path.join(fig_dir, 'figure1', param + '.png'))
+        plt.savefig(os.path.join(
+            fig_dir, 'figure1', param + '_' + filtering_method + '.png'
+        ))
     plt.close('all')
 
 def figure2():
-    pass
+    """popts[idx_coh][k] = {param: opt_val for param in params}
+    
+    where each k corresponds to a distinct agent
+    """
+    # get the coherences with main_keys for each agent
+    cohs, dic = get_dic(restrict_cohs=True)
+    n_agents = len(dic[0])
 
-def figure3():
-    pass
+    # get the most probable parameters (according to joint law)
+    max_vals = get_max_vals(cohs, dic)
+
+    # build the kernels modulus from the parameters:
+    # kernels[idx_coh] = [kernel_1, kernel_2, ...]
+    kernels = [np.zeros( (n_agents, 300) ) for _ in range(len(cohs))]
+    for idx_coh in range(len(cohs)):
+        for i in range(n_agents):
+            popt = {param: val[idx_coh][i] for param, val in max_vals.items()}
+            kernels[idx_coh][i, :] = np.abs(exponential_Fred(np.linspace(0, 1, 300), **popt))
+
+    # compute the average and std of kernel modulus over agents:
+    # means[idx_coh] = average most probable kernel modulus over agents
+    means = []
+    stds = []
+    for idx_coh, tab in enumerate(kernels):
+        means.append(np.mean(tab, axis=0))
+        stds.append(np.std(tab, axis=0))
+
+    # plot
+    # times in sec
+    x = np.linspace(0, 1, 300) * 8.33 * 1e-3
+    fig, ax = plt.subplots(1, 1, constrained_layout=True)
+    fontsize = 14
+    ax.set_ylabel(r'$|k(t)|$', fontsize=fontsize)
+    ax.set_xlabel(r'$t$' + ' (sec)', fontsize=fontsize)
+    ax.tick_params(labelsize=fontsize - 1)
+
+    # there are 7 cohs, one color per coh
+    colors = ['b', 'k', 'r', 'green', 'purple', 'yellow', 'pink']
+
+    # display the kernel of agent idx_agent
+    idx_agent = 20
+
+    for idx_coh, color in enumerate(colors):
+        coh = cohs[idx_coh]
+        y = kernels[idx_coh][idx_agent, :]
+        label = f"coh = {coh:.2f}"
+        ax.plot(x, y, '.', color=color, label=label)
+
+    """for idx_coh, color in enumerate(colors):
+        coh = cohs[idx_coh]
+        y = means[idx_coh]
+        label = f"coh = {coh:.2f}"
+        ax.plot(x, y, '.', color=color, label=label)"""
+    
+    ax.legend(fontsize=fontsize)
+
+    plt.savefig(os.path.join(fig_dir, 'figure2', 'kernel.png'))
+    plt.show()
+
+def get_data_raw(cohs, dic):
+    """For each id, get the modulus of the raw kernel:
+    kernels[idx_coh] = [kernel_1, kernel_2, ...]
+    """
+    n_agents = len(dic[0])
+
+    # collect the kernels modulus:
+    # kernels[idx_coh] = [kernel_1, kernel_2, ...]
+    kernels = [np.zeros( (n_agents, 300) ) for _ in range(len(cohs))]
+    for idx_coh in range(len(cohs)):
+        for i in range(n_agents):
+            k_out = db.cur.execute("""
+                SELECT kernel_output
+                FROM Kernels
+                WHERE
+                    main_key = ?
+                AND
+                    kernel_type = ?
+                AND
+                    kernel_method = ?
+            """, (dic[idx_coh][i], 'raw', 'linear_reg')).fetchone()[0]
+            tab_x, tab_y = json.loads(k_out)
+            kernels[idx_coh][i, :] = np.sqrt(np.array(tab_x) ** 2 + np.array(tab_y) ** 2)
+    return kernels
+
+def figure2_raw():
+    """See main5.py for generating the figures about raw kernels;
+    this one is DEPRECIATED.
+    """
+    # get the coherences with main_keys for each agent
+    cohs, dic = get_dic(restrict_cohs=True)
+
+    # get the kernels modulus
+    kernels = get_data_raw(cohs, dic)
+
+    """
+    # compute the average and std of kernel modulus over agents:
+    # means[idx_coh] = average most probable kernel modulus over agents
+    means = []
+    stds = []
+    for idx_coh, tab in enumerate(kernels):
+        means.append(np.mean(tab, axis=0))
+        stds.append(np.std(tab, axis=0))
+    """
+
+    # plot
+    # times in sec
+    x = np.linspace(0, 1, 300) * 8.33 * 1e-3
+    _, ax = plt.subplots(1, 1, constrained_layout=True)
+    fontsize = 14
+    ax.set_ylabel(r'$|k(t)|$', fontsize=fontsize)
+    ax.set_xlabel(r'$t$' + ' (sec)', fontsize=fontsize)
+    ax.tick_params(labelsize=fontsize - 1)
+
+    # there are 7 cohs, one color per coh
+    colors = ['b', 'k', 'r', 'green', 'purple', 'cyan', 'pink']
+
+    # display the kernel of agent idx_agent
+    idx_agent = 0
+
+    # choose a coherence
+    idx_coh = 6
+    coh = cohs[idx_coh]
+    color = colors[idx_coh]
+    tabs = kernels[idx_coh]
+
+    #for coh, color, tabs in zip(cohs, colors, kernels):
+    y = tabs[idx_agent, :]
+    label = f"coh = {coh:.2f}"
+    ax.plot(x, y, '.', color=color, label=label)
+
+    ax.legend(fontsize=fontsize)
+
+    plt.savefig(os.path.join(fig_dir, 'figure2_raw', 'kernel.png'))
+    plt.show()
+
+figure1(filtering_method='unfiltered', use_cache=False)
+figure1(filtering_method='remove_after_tgt', use_cache=False)
