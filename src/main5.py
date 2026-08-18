@@ -565,3 +565,7 @@ corrmat = get_corrmat(conv_popts)
 # figure3_raw(conv_popts, filtering_method=filtering_method, with_log=with_log)
 # figure4_raw(corrmat, filtering_method=filtering_method, with_log=with_log)
 # figure5_raw(conv_popts, filtering_method=filtering_method, with_log=with_log)
+
+
+# to display kernels together with their fit
+# check_popts(agents, kernels, popts)
