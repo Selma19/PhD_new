@@ -15,6 +15,7 @@ import json, os, pickle
 import numpy as np
 from scipy.special import softmax
 import matplotlib.pyplot as plt
+from blume.table import table as tb
 
 from database.kernel.fill_db._fill_db import Fit_param3
 from database import Kernel_db
@@ -550,22 +551,99 @@ def figure5_raw(
 
     plt.close('all')
 
+def figure6_raw(
+    agents: List[str],
+    kernels: List[np.ndarray],
+    popts: List[np.ndarray],
+    conv_popts: List[np.ndarray],
+    filtering_method: Literal['unfiltered', 'remove_after_tgt']='unfiltered'
+):
+    """Plots the raw kernels together with their fits.
 
-filtering_method = 'remove_after_tgt'
-with_log = True
+    Combination of check_popts and figure2_raw:
+    - one panel per agent
+    - one figure per panel, all coherences colored as in figure2_raw
+
+    Also creates a table per agent, gathering the parameter values
+    for each coherence.
+    """
+    # there are 6 cohs, one color per coh
+    colors = ['b', 'k', 'r', 'green', 'purple', 'cyan', 'pink']
+
+    fit = Fit_param3()
+    fit.method = 'curve_fit'
+
+    fontsize = 14
+
+    X = np.linspace(0, 1, 300) * 299 * 8.33 * 1e-3
+    xlabel = r'$t$' + ' (sec)'
+    ylabel = r'$|k(t)|$'
+    
+    for idx_agent, agent in enumerate(agents):
+        # first create the table
+        # one row per coherence, and each column for a distinct parameter
+        fig, ax = plt.subplots(1, 1)
+        ax.set_axis_off()
+        colLabels = [
+            'coherence', 'tau1 (sec)', 'tau2 (sec)', 'alpha', 'd (sec)', 'A'
+        ]
+        cellText = []
+
+        for idx_coh, coh in enumerate(cohs):
+            row = [f"{coh:.2f}"]
+            for idx_param in range(5):
+                val = conv_popts[idx_coh][idx_agent, idx_param]
+                if val >= 1 and val < 10:
+                    row.append(f"{val:.2f}")
+                else:
+                    row.append(f"{val:.2e}")
+            cellText.append(row)
+
+        tb(ax, cellText=cellText, cellLoc='center', colLabels=colLabels, loc='center')
+        fig.subplots_adjust(left=0, bottom=0, right=1, top=1, wspace=0, hspace=0)
+
+        plt.savefig(
+            os.path.join(fig_dir, 'figure6_raw', filtering_method, agent + '_params.png')
+        )
+        plt.close()
+
+        # second create the plot
+        _, ax = plt.subplots(1, 1, constrained_layout=True, figsize=(8, 8))
+
+        # set the title and axes labels
+        title = f"agent {agent}"
+        ax.set_title(title, fontsize=fontsize)
+        ax.set_xlabel(xlabel, fontsize=fontsize)
+        ax.set_ylabel(ylabel, fontsize=fontsize)
+        ax.set_ylim(0, 0.145)
+        
+        for idx_coh, (coh, color) in enumerate(zip(cohs, colors)):
+            label = f"coh = {coh:.2f}"
+
+            fit.out = {name: val for name, val in zip(fit.param_names, popts[idx_coh][idx_agent])}
+            fit_ker = fit.read_kernel_from_out()
+            ker = kernels[idx_coh][idx_agent, :]
+
+            ax.plot(X[1:-1], ker[1:-1], '.', label=label, color=color)
+            ax.plot(X[1:-1], fit_ker[1:-1], '-', color=color)
+        ax.legend(fontsize=fontsize)
+        plt.savefig(
+            os.path.join(fig_dir, 'figure6_raw', filtering_method, agent + '.png')
+        )
+        plt.close()
+
+filtering_method = 'unfiltered'
+with_log = False
 use_cache = True
 agents = get_agents()
 kernels = get_kernels(agents, use_cache=use_cache, filtering_method=filtering_method)
 popts = get_popts(kernels, use_cache=use_cache, filtering_method=filtering_method)
 conv_popts = convert_popts(popts, with_log=with_log)
-corrmat = get_corrmat(conv_popts)
+# corrmat = get_corrmat(conv_popts)
 
 # figure1_raw(conv_popts, filtering_method=filtering_method, with_log=with_log)
 # figure2_raw(kernels, filtering_method=filtering_method)
 # figure3_raw(conv_popts, filtering_method=filtering_method, with_log=with_log)
 # figure4_raw(corrmat, filtering_method=filtering_method, with_log=with_log)
 # figure5_raw(conv_popts, filtering_method=filtering_method, with_log=with_log)
-
-
-# to display kernels together with their fit
-# check_popts(agents, kernels, popts)
+figure6_raw(agents, kernels, popts, conv_popts, filtering_method=filtering_method)
