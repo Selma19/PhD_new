@@ -261,7 +261,10 @@ class Kernel_db(Database):
         nn_rows: int
     ):
         if max_rows_per_cpu * n_scripts * n_cpus < nn_rows:
-            raise ValueError("too many rows, choose a higher value for `max_rows_per_cpu`")
+            raise ValueError(
+                "too many rows, choose a higher `max_rows_per_cpu`, " \
+                "or a higher `n_cpus` or a higher `n_scripts`."
+            )
 
         # as many scripts as possible will receive max_rows_per_cpu
         max_rows_per_node = n_cpus * max_rows_per_cpu
