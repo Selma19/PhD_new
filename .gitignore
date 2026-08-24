@@ -1,7 +1,7 @@
 **/data
 **/CPR_psychophysics
-**/slurm-files
 **/venv
 **/__pycache__
 **/backup
 **/figures
+**/test

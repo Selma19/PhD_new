@@ -7,7 +7,7 @@
 # Once the python program has completed, these data should be transferred back to
 # the project directory.
 
-cp ../data/solo/kernel.db $LOCAL_TMPDIR
+cp ../data/solo/kernel_only_main.db $LOCAL_TMPDIR/kernel.db
 cp ../data/solo/stimulus.db $LOCAL_TMPDIR
 
 echo "databases transferred to compute node local ssd"
@@ -16,4 +16,4 @@ echo "databases transferred to compute node local ssd"
 
 echo "transferring the database chunk to the ssd shared by all compute nodes"
 
-cp ${LOCAL_TMPDIR}/kernel.db $SHARED_TMPDIR/kernel_$1.db
+cp $LOCAL_TMPDIR/kernel.db $SHARED_TMPDIR/kernel_$1.db

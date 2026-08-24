@@ -1,14 +1,16 @@
 #!/bin/bash
+
 # custom name
-#SBATCH --job-name=fill_kernels_kernel
+#SBATCH --job-name=fill_kernels_kernel_only_linear_reg
+
 # partition
 #SBATCH -p cidbn
+
 # nb of nodes
 #SBATCH --nodes=6
+
 # time limit hh:mm:ss
 #SBATCH -t 20:00:00
-# reduce the queuing time if time is less than 2 hours
-##SBATCH --qos=2h
 
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=50
@@ -30,7 +32,7 @@ export OMP_NUM_THREADS=1
 source ../venv/bin/activate
 
 # this is the database where data from the different nodes are aggregated after computation
-cp ../data/solo/kernel.db $SHARED_TMPDIR
+cp ../data/solo/kernel_only_main.db $SHARED_TMPDIR/kernel.db
 
 echo "kernel transferred to shared location"
 
@@ -49,4 +51,4 @@ srun --nodes=1 --exclusive ../venv/bin/python ../src/merge_kernel_dbs.py
 
 echo "transferring back the kernel database..."
 
-cp ${SHARED_TMPDIR}/kernel.db ../data/solo/new_kernel.db
+cp $SHARED_TMPDIR/kernel.db ../data/solo/kernel_only_linear_reg.db
