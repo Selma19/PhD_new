@@ -14,6 +14,7 @@ if __name__ == "__main__":
     # collect arguments sent to the program
     db = Kernel_db()
     db._fill_kernels(
-        max_rows_per_cpu=1,
+        max_rows_per_cpu=34,
         n_cpus_max=10
     )
+    db.close()

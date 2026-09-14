@@ -57,8 +57,8 @@ class Stimulus_db(Database):
     def _fill_single_folders(self, agent: str):
         # get the list of coherence values
         cohs = [
-            0, 0.079, 0.131, 0.217,
-            0.359, 0.592, 0.978
+            0, 0.07999999821186066, 0.13199999928474426, 0.21780000627040863,
+            0.3594000041484833, 0.5929999947547913, 0.9783999919891357
         ]
         
         rows = []

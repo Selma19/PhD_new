@@ -14,21 +14,21 @@ __all__ = [
 
 # location of the parent of Data/
 rootPath = __file__
-for _ in range(3):
+for _ in range(4):
     rootPath = os.path.dirname(rootPath)
 
 def prefix_path(agent: str):
     """The path to the directory containing the joystick and dot data for `agent`."""
     return os.path.join(
         rootPath,
-        'Data', 'Solo', agent, 'Data', 'Formated_Data'
+        'data', 'old_data', 'Solo', agent, 'Data', 'Formated_Data'
     )
 
 def prefix_path_h5(agent: str):
     """The path to the directory containing the HDF5 files for `agent`."""
     return os.path.join(
         rootPath,
-        'Data', 'Solo', 'hdf5', agent
+        'data', 'CPR_psychophysics', agent
     )
 
 def load_signal(block: str, coh: float, agent: str):

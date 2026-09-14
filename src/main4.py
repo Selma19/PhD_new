@@ -1,4 +1,5 @@
-"""Draws the figures for the paper.
+"""Draws the figures for the paper using the data in `data/solo`
+(the databases filled from the h5py files).
 
 3 figures:
 

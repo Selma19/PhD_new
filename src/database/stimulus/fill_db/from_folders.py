@@ -109,10 +109,33 @@ def get_tgt_times(agent: str, coh: float, block: str) -> List[float]:
 def get_agents():
     """Returns the list of solo agent names."""
     path = __file__
-    for _ in range(4):
+    for _ in range(5):
         path = os.path.dirname(path)
     path = os.path.join(
-        path, "Data", "Solo"
+        path, "data", "old_data", "Solo"
     )
     list_files = os.listdir(path)
-    return [name for name in list_files if '.' not in name and len(name) == 3]
+    tab = [name for name in list_files if '.' not in name and len(name) == 3]
+
+    res = []
+    cohs = [
+        '0', '79', '131', '217', '359', '592', '978'
+    ]
+    for agent in tab:
+        yes = True
+        list_dir = os.listdir(
+            os.path.join(
+                path, agent, 'Data', 'Formated_Data', 'Joystick'
+            )
+        )
+        for coh in cohs:
+            if coh not in list_dir:
+                yes = False
+
+        if yes:
+            res.append(agent)
+
+        else:
+            print(f"faulty agent: {agent}")
+
+    return res

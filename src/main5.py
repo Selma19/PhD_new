@@ -1,4 +1,6 @@
-"""Draws the figures using the old data stored in external storage.
+"""Draws the figures using the old data stored in the external storage.
+Also compares the raw kernels computed from the h5py data with the
+ones computed from the external storage data.
 
 The root of this storage is:
 root = /Volumes/Selma_PhD/PhD/Backup/CPR_many_files/Felix_project/Data/Solo_data/CPR_psychophysics
@@ -11,6 +13,7 @@ kernel = np.loadtxt(load_path).view(complex)
 """
 
 from typing import List, Literal
+from sqlite3 import ProgrammingError
 import json, os, pickle
 import numpy as np
 from scipy import stats
@@ -19,6 +22,7 @@ from blume.table import table as tb
 
 from database.kernel.fill_db._fill_db import Fit_param3
 from database import Kernel_db
+from database.stimulus.fill_db.from_folders import get_agents as get_agents_in_db
 
 # directory for figures
 fig_dir = __file__
@@ -104,23 +108,30 @@ def load_kernel_no_tgt(agent: str, coh: float):
 def load_kernel_unfiltered_from_db(agent: str, coh: float):
     db = Kernel_db()
     db.connect()
-    main_key = db.cur.execute("""
-        SELECT id
-        FROM Main
-        WHERE
-            agent = ?
-            AND coh = ?
-            AND filtering_method = 'unfiltered'
-    """, (agent, coh)).fetchone()
 
-    k_out = db.cur.execute("""
-        SELECT kernel_output
-        FROM Kernels
-        WHERE
-            main_key = ?
-            AND kernel_type = 'raw'
-            AND kernel_method = 'linear_reg'
-    """, main_key).fetchone()[0]
+    try:
+        main_key = db.cur.execute("""
+            SELECT id
+            FROM Main
+            WHERE
+                agent = ?
+                AND coh = ?
+                AND filtering_method = 'unfiltered'
+        """, (agent, coh)).fetchone()
+
+        k_out = db.cur.execute("""
+            SELECT kernel_output
+            FROM Kernels
+            WHERE
+                main_key = ?
+                AND kernel_type = 'raw'
+                AND kernel_method = 'linear_reg'
+        """, main_key).fetchone()[0]
+
+    except ProgrammingError:
+        db.close()
+        return np.zeros(300)
+    
     db.close()
 
     res = json.loads(k_out)
@@ -461,6 +472,11 @@ def figure1_raw(
     plt.close('all')
 
 def figure2_raw(kernels, filtering_method='unfiltered', **kwargs):
+    """Plots the modulus of the raw kernels, averaged
+    over all agents, for each coherence on the same figure.
+    The standard deviation of the modulus, computed over
+    agents, is also shown.
+    """
     # compute the average and std of kernel modulus over agents:
     # means[idx_coh] = average most probable kernel modulus over agents
     means = []
@@ -717,23 +733,168 @@ def figure6_raw(
         )
         plt.close()
 
-agents = get_agents()
-kwargs = {
-    'use_cache': False,
-    'filtering_method': 'unfiltered',
-    'with_log': False,
-    'from_db': True
-}
-kernels = get_kernels(agents, **kwargs)
-popts = get_popts(kernels, **kwargs)
-conv_popts = convert_popts(popts, **kwargs)
-# corrmat = get_corrmat(conv_popts)
+def get_figures():
+    agents = get_agents()
+    kwargs = {
+        'use_cache': False,
+        'filtering_method': 'unfiltered',
+        'with_log': False,
+        'from_db': True
+    }
+    kernels = get_kernels(agents, **kwargs)
+    popts = get_popts(kernels, **kwargs)
+    conv_popts = convert_popts(popts, **kwargs)
+    # corrmat = get_corrmat(conv_popts)
 
-# figure1_raw(conv_popts, smooth_hist=True, **kwargs)
-# figure2_raw(kernels, **kwargs)
-# figure3_raw(conv_popts, **kwargs)
-# figure4_raw(corrmat, **kwargs)
-# figure5_raw(conv_popts, **kwargs)
-# figure6_raw(agents, kernels, popts, conv_popts, **kwargs)
+    # figure1_raw(conv_popts, smooth_hist=True, **kwargs)
+    # figure2_raw(kernels, **kwargs)
+    # figure3_raw(conv_popts, **kwargs)
+    # figure4_raw(corrmat, **kwargs)
+    # figure5_raw(conv_popts, **kwargs)
+    # figure6_raw(agents, kernels, popts, conv_popts, **kwargs)
+    # check_popts(agents, kernels, popts, conv_popts)
 
-check_popts(agents, kernels, popts, conv_popts)
+def compare_db_with_former_raw_kernels():
+    """On a separate figure for each agent and coherence,
+    plots the raw kernel from the db with the raw kernel
+    from the former storage on the same figure.
+
+    To ease comparison, both kernels are normalized.
+    """
+    agents = get_agents()
+
+    # load the db kernels
+    db_kernels = get_kernels(
+        agents, use_cache=False, from_db=True,
+        filtering_method='unfiltered'
+    )
+
+    # load the former kernels
+    former_kernels = get_kernels(
+        agents, use_cache=True, from_db=False
+    )
+
+    # plot
+    # times in sec
+    x = np.linspace(0, 1, 300) * 299 * 8.33 * 1e-3
+    fontsize = 14
+    ylabel = r'$|k(t)|$'
+    xlabel = r'$t$' + ' (sec)'
+
+    for idx_agent, agent in enumerate(agents):
+        for idx_coh, coh in enumerate(cohs):
+            _, ax = plt.subplots(1, 1, constrained_layout=True)
+            title = f"agent {agent}, coh = {coh:.2f}"
+            ax.set_title(title, fontsize=fontsize)
+            ax.set_ylabel(ylabel, fontsize=fontsize)
+            ax.set_xlabel(xlabel, fontsize=fontsize)
+            ax.tick_params(labelsize=fontsize - 1)
+
+            y = db_kernels[idx_coh][idx_agent, :]
+            y /= np.sqrt(np.sum(y ** 2))
+            ax.plot(x, y, '.', label='db kernel')
+
+            y = former_kernels[idx_coh][idx_agent, :]
+            y /= np.sqrt(np.sum(y ** 2))
+            ax.plot(x, y, '.', label='former kernel')
+
+            ax.legend(fontsize=fontsize)
+            plt.show()
+
+def solve_shift_problem():
+    """Same as `figure2_raw`
+    but instead of plotting the average of the modulus,
+    we plot the modulus of the average kernels.
+    """
+    # redefine the functions so that we consider
+    # the complex kernels instead of their modulus
+    def load_kernel_unfiltered(agent: str, coh: float):
+        """Returns the raw kernel associated to agent, coh,
+        when no filter has been applied to the sensory data
+        (dot complex direction).
+        """
+        load_path = os.path.join(
+            rootDir, agent, 'Analysis',
+            'Kernels', 'Basic', str( int(coh * 1000) ),
+            'train_and_save_kernel_size_300.txt'
+        )
+        return np.loadtxt(load_path).view(complex) * coh
+
+    def get_kernels(agents):
+        """Returns kernels[idx_coh][idx_agent, :] = 300 kernel
+        complex values for agent and coh.
+        """
+        # get the complex raw kernels
+        kernels = [
+            np.zeros( (len(agents), 300), dtype=np.complex128 )
+            for _ in range(len(cohs))
+        ]
+
+        for idx_coh, coh in enumerate(cohs):
+            print(f"{len(cohs) - idx_coh} cohs remaining")
+            for i, agent in enumerate(agents):
+                kernels[idx_coh][i, :] = load_kernel_unfiltered(agent, coh)
+
+        return kernels
+
+    def figure2_raw(kernels):
+        """Plots the modulus of the average raw kernel
+        over all agents, for each coherence on the same figure.
+        The standard deviation of the kernels, computed over
+        agents, is also shown.
+        """
+        # compute the average and std of kernels over agents,
+        # and after take the modulus:
+        # means[idx_coh] = modulus of the average
+        # raw kernel over agents
+        means = []
+        #stds = []
+        for tab in kernels:
+            means.append(np.abs(np.mean(tab, axis=0)))
+            #stds.append(np.std(tab, axis=0))
+
+        # plot
+        # times in sec
+        x = np.linspace(0, 1, 300) * 299 * 8.33 * 1e-3
+        _, ax = plt.subplots(1, 1, constrained_layout=True)
+        fontsize = 14
+        ax.set_ylabel(r'$|k(t)|$', fontsize=fontsize)
+        ax.set_xlabel(r'$t$' + ' (sec)', fontsize=fontsize)
+        ax.tick_params(labelsize=fontsize - 1)
+
+        # there are 7 cohs, one color per coh
+        colors = ['b', 'k', 'r', 'green', 'purple', 'cyan', 'pink']
+
+        # clean the kernel values
+        clean_means = []
+        for y in means:
+            z = Fit_param3()._clean_kernel(y)
+            z[0] = 300
+            z[-1] = 300
+            clean_means.append(z)
+
+        # for coh, color, y, std in zip(cohs, colors, clean_means, stds):
+        for coh, color, y in zip(cohs, colors, clean_means):
+            label = f"coh = {coh:.2f}"
+            indices = (y < 250).nonzero()
+            X = x[indices]
+            Y = y[indices]
+            #Z = std[indices]
+            ax.plot(X, Y, '-', color=color, label=label)
+            #ax.fill_between(X, Y - Z / 2, Y + Z / 2, color=color, alpha=0.1)
+
+        ax.legend(fontsize=fontsize)
+        plt.show()
+        #plt.savefig(
+        # os.path.join(
+        #   fig_dir, 'figure2_raw', filtering_method, 'kernel.png'
+        # ))
+
+    # plot the new figure
+    agents = get_agents()
+    kernels = get_kernels(agents)
+    figure2_raw(kernels)
+
+compare_db_with_former_raw_kernels()
+
+# solve_shift_problem()

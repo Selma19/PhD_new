@@ -5,6 +5,8 @@ from database import Kernel_db
 
 if __name__ == "__main__":
     db = Kernel_db()
+    db.clear()
     db.create()
     db.connect()
     db._fill_main()
+    db.close()
