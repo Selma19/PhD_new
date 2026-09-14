@@ -1,0 +1,15 @@
+Stimulus database created
+
+nb of cpu cores available: 128
+nb of agents: 38
+
+gathered all rows to insert
+
+============ Job Information ===================================================
+Submitted: 2026-07-25T21:12:03
+Started: 2026-07-25T21:12:04
+Ended: 2026-07-25T21:27:32
+Elapsed: 16 min, Limit: 60 min, Difference: 44 min
+CPUs: 38, Nodes: 1
+Estimated credit Consumption: 5.07 core-hours
+================================================================================
