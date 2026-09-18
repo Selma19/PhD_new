@@ -537,6 +537,81 @@ class Param1_kernel(Kernel):
 
 		return exponential_Fred(np.linspace(0, 1, 300), *popt)
 
+class Param3_kernel(Kernel):
+	"""The kernel function of this model is the same as
+	`Fit_param3`, i.e. given by `utils.exp_Fred_jumps`.
+
+	There are 7 trainable parameters.
+	"""
+
+	def __init__(self):
+		Kernel.__init__(self)
+		self.param_names = [
+			'omega1', 'omega2', 'alpha', 'd', 'A', 'V0', 'V1'
+		]
+
+	def _format_dataset(self, dataset: Dataset):
+		xdata, ydata = dataset
+		xdata = np.concatenate( (xdata.real, xdata.imag), axis=1 )
+		xdata = np.tile(xdata, (2, 1))
+		xdata = np.concatenate(
+			(
+				xdata[:len(xdata) // 2, :300].T,
+				xdata[:len(xdata) // 2, 300:].T
+			), axis=1
+		)
+		ydata = np.concatenate( (ydata.real, ydata.imag) )
+		return xdata, ydata
+
+	def _train_curve_fit(self, train_set: Dataset):
+		# set the dot and joystick complex time series at the correct format
+		xdata, ydata = self._format_dataset(train_set)
+
+		# define the function to pass to curve_fit
+		def fct_to_fit(dot_vec, *params):
+			"""The function whose parameters are fitted.
+
+			It takes a vector of size `kernel_size` and returns a complex number.
+			If `dot_vec` is of shape (n, kernel_size), then the result is of shape (n,).
+			"""
+			ker = exp_Fred_jumps(np.linspace(0, 1, 300), *params)
+			return np.dot(ker, dot_vec)
+
+		popt, _ = curve_fit(
+			fct_to_fit,
+			xdata,
+			ydata,
+			p0=[10, 0.3, 1.3, 0, 8, 1, 1],
+			bounds =([0, 0, 0, 0, 0, 0, 0], [100, 100, 10, 0.5, 10, 10, 10])
+		)
+		self.out = dict(zip(self.param_names, popt))
+
+	def train(
+		self,
+		train_set: Dataset,
+		method: Literal['curve_fit', 'nested_sampling'],
+		*args, **kwargs
+	):
+		if method == 'curve_fit':
+			self._train_curve_fit(train_set)
+
+		elif method == 'nested_sampling':
+			self._train_NS(train_set)
+		
+		else:
+			raise ValueError("check the value of 'method'")
+		self.method = method
+
+	def read_kernel_from_out(self):
+		if self.method == 'curve_fit':
+			popt = [self.out[key] for key in self.param_names]
+
+		elif self.method == 'nested_sampling':
+			ind = np.argmax(self.out[1])
+			popt = [self.out[0][key][ind] for key in self.param_names]
+
+		return exp_Fred_jumps(np.linspace(0, 1, 300), *popt)
+
 def sorted_find_exclusive(t: float, tabTimes: List[float]):
 	"""Returns `k` such that
 	`tabTimes[k - 1] <= t < tabTimes[k]`.
@@ -682,6 +757,7 @@ def load_fragments(
 		# the exact times at which a change in nominal direction occurs
 		nom_ts, _ = zip(*json.loads(row[1]))
 
+		# the exact times at which a target appears
 		tgt_ts = json.loads(row[2])
 
 		tab = np.array(json.loads(row[3]))
@@ -724,7 +800,7 @@ def load_dataset(
 	filtering_method: Literal['unfiltered', 'remove_after_tgt'],
 	db: Stimulus_db
 ) -> Dataset:
-	"""Returns in this order the dot and joystick directions under a canonical matrix form.
+	"""Returns in this order the dot and joystick directions in a canonical matrix form.
 
 	Notes
 	-----
@@ -870,7 +946,7 @@ def splitData(dataset: Dataset, testRatio: float):
 
 def crossVal(
 	dataset: Dataset,
-	kernel_type: Literal['raw', 'param1'],
+	kernel_type: Literal['raw', 'param1', 'param3'],
 	kernel_method: Literal[
 		'curve_fit', 'nested_sampling',
 		'lasso', 'ridge', 'linear_reg', 'elastic'
@@ -899,6 +975,8 @@ def crossVal(
 		model = Raw_kernel()
 	elif kernel_type == 'param1':
 		model = Param1_kernel()
+	elif kernel_type == 'param3':
+		model = Param3_kernel()
 	else:
 		raise ValueError("check the value of 'kernel_type'")
 

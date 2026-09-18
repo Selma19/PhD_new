@@ -1,5 +1,6 @@
 """Defines the kernel database."""
 
+from typing import List
 import subprocess, os, json
 import multiprocessing as mp
 import time
@@ -46,6 +47,8 @@ class Kernel_db(Database):
             self.db_path = os.environ['LOCAL_TMPDIR']
         self.db_name = "kernel.db"
         self.location = location
+
+        self.kernels_to_compute: List[str] | None = None
 
     def visu(self):
         """We have 2 figures:
@@ -200,20 +203,35 @@ class Kernel_db(Database):
         method_params = [1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2]
 
         # specify a subset of triples (kernel_type, kernel_method, method_param)
-        triples = [('raw', 'linear_reg', json.dumps('no_param'))]
-        # for kernel_method in ['lasso', 'ridge']:
-        #     triples.extend(
-        #         [('raw', kernel_method, json.dumps(param)) for param in method_params]
-        #     )
-        # for kernel_method in ['nested_sampling']:
-        #     triples.append( ('param1', kernel_method, json.dumps('no_param')) )
+        if self.kernels_to_compute is None:
+            self.kernels_to_compute = ['raw', 'lasso', 'ridge', 'nested_sampling']
+
+        triples = []
+        if 'raw' in self.kernels_to_compute:
+            triples.append( ('raw', 'linear_reg', json.dumps('no_param')) )
+
+        if 'nested_sampling' in self.kernels_to_compute:
+            triples.append(
+                ('param1', 'nested_sampling', json.dumps('no_param'))
+            )
+
+        if 'curve_fit' in self.kernels_to_compute:
+            triples.append(
+                ('param3', 'curve_fit', json.dumps('no_param'))
+            )
+
+        for kernel_method in ['lasso', 'ridge']:
+            if kernel_method in self.kernels_to_compute:
+                triples.extend(
+                    [('raw', kernel_method, json.dumps(param)) for param in method_params]
+                )
         return triples
 
     def _fill_kernels_chunk(
         self,
         main_rows: list,
         n_cpus: int,
-        debug=False
+        debug=False,
     ):
         """Processes in parallel each row contained in `main_rows`.
         """
@@ -282,8 +300,10 @@ class Kernel_db(Database):
         n_cpus_max: int,
         script_num: int=0,
         n_scripts: int=1,
-        debug=False
+        debug=False,
+        kernels_to_compute: List[str] | None=None
     ):
+        self.kernels_to_compute = kernels_to_compute
         self.connect()
         # for each row of Main and each triple, compute the kernels and evaluate them
         n_rows = len(self.cur.execute("""SELECT * FROM Main""").fetchall())
@@ -306,7 +326,9 @@ class Kernel_db(Database):
                 AND id < ?
         """, (key1, key2)).fetchall()
         self.close()
-        self._fill_kernels_chunk(main_rows, n_cpus=n_cpus_max, debug=debug)
+        self._fill_kernels_chunk(
+            main_rows, n_cpus=n_cpus_max, debug=debug
+        )
 
         print(f"Kernels table filled, script nb {script_num}")
         print(f"time to kernel chunk: {time.perf_counter() - t}")

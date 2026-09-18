@@ -14,7 +14,6 @@ def visu_filtered_data():
     cohs = db.cur.execute("""
         SELECT DISTINCT coh FROM Main
     """).fetchall()
-    db.close()
     cohs = [coh[0] for coh in cohs]
 
     # load the filtered data
@@ -22,15 +21,20 @@ def visu_filtered_data():
     fragments_size = []
     for coh in cohs:
         print(coh)
-        joystick_list, dot_list = load_fragments(agent, coh, min_length=0)
+        joystick_list, dot_list = load_fragments(
+            agent, coh, min_length=0, db=db
+        )
         fragments_size.extend([len(fragment) for fragment in dot_list])
+    db.close()
     
     # visualize the distribution
     fig, ax = plt.subplots(1, 1)
     ax.set_xlabel("fragment length")
     ax.set_ylabel("nb of fragments")
-    ax.set_title("distribution of data fragment length after filtering")
-    
+    ax.set_title(
+        "distribution of data fragment length after filtering\n" \
+        f"agent {agent}"
+    )
     median = np.median(fragments_size)
     plt.hist(fragments_size)
     ax.plot([median] * 2, [0, 740], '--', color='red', label='median length')
@@ -102,6 +106,8 @@ def display_fit(kernel_key: int):
     ax.plot(kernel_fct, '.', label='fit', alpha=0.5)
     ax.legend()
     plt.show()
+
+visu_filtered_data()
 
 if __name__ == "__main__":
     # # create the stimulus database for all agents available

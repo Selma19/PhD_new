@@ -8,6 +8,7 @@ take advantage of the SCC resources.
 So instead, we parallelize at the level of the triples (17 triples per row,
 so 17 * 568 tasks that can be handled independently).
 """
+
 from database import Kernel_db
 
 if __name__ == "__main__":
@@ -15,6 +16,8 @@ if __name__ == "__main__":
     db = Kernel_db()
     db._fill_kernels(
         max_rows_per_cpu=34,
-        n_cpus_max=10
+        n_cpus_max=10,
+#         kernels_to_compute=['raw', 'lasso', 'ridge']
+        kernels_to_compute=['curve_fit']
     )
     db.close()

@@ -39,11 +39,41 @@ cohs = [
     0.3594000041484833, 0.5929999947547913, 0.9783999919891357
 ]
 
+def build_dirs():
+    """Creates the directories which will store
+    the figures.
+
+    Assumes the directory `figures` has already been created.
+    """
+    methods = ['unfiltered', 'remove_after_tgt']
+    from_dbs = [True, False]
+    n_dirs = 6
+    base_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), 'figures'
+    )
+    
+    for i in range(1, n_dirs + 1):
+        for method in methods:
+            for from_db in from_dbs:
+                path = os.path.join(
+                    base_path, f'figure{i}_raw',
+                    f'{method}{from_db}'
+                )
+                try:
+                    os.mkdir(path)
+                except FileExistsError:
+                    pass
+
 def get_agents(use_cache=True, **kwargs):
     cachePath = os.path.join(fig_dir, 'caches', 'agents')
 
     if use_cache:
-        return pickle.load(open(cachePath, '+rb'))
+        res = pickle.load(open(cachePath, '+rb'))
+        tab = [
+            'roh', 'ang', 'yam', 'nie', 'sol', 'swp', 'tak', 'mls',
+           'anb', 'gac', 'rit', 'seo', 'rab', 'mod'
+        ]
+        return [agent for agent in res if agent not in tab]
 
     else:
         agents = []
@@ -65,47 +95,13 @@ def load_kernel_unfiltered(agent: str, coh: float):
         'Kernels', 'Basic', str( int(coh * 1000) ),
         'train_and_save_kernel_size_300.txt'
     )
-    return np.abs(np.loadtxt(load_path).view(complex)) * coh
+    return np.loadtxt(load_path).view(complex) * coh
 
-def load_kernel_no_tgt(agent: str, coh: float):
-    """Returns the modulus of the raw kernel associated to agent, coh,
-    when the influence of the target has been removed from the stimulus
-    (dot complex direction).
-    """
-    db = Kernel_db()
-    db.connect()
-
-    # identify the primary key corresponding to the filtered data
-    # of the agent and coh
-    main_key = db.cur.execute("""
-        SELECT id
-        FROM Main
-        WHERE
-            filtering_method = ?
-        AND
-            coh = ?
-        AND
-            agent = ?
-    """, (filtering_method, coh, agent)).fetchone()[0]
-
-    # fetch the raw kernel output
-    k_out = db.cur.execute("""
-        SELECT kernel_output
-        FROM Kernels
-        WHERE
-            main_key = ?
-        AND
-            kernel_type = ?
-        AND
-            kernel_method = ?
-    """, (main_key, 'raw', 'linear_reg')).fetchone()[0]
-    db.close()
-
-    # return the raw kernel modulus
-    tab_x, tab_y = json.loads(k_out)
-    return np.sqrt(np.array(tab_x) ** 2 + np.array(tab_y) ** 2)
-
-def load_kernel_unfiltered_from_db(agent: str, coh: float):
+def load_kernel_from_db(
+        agent: str,
+        coh: float,
+        filtering_method: Literal["unfiltered","remove_after_tgt"]
+):
     db = Kernel_db()
     db.connect()
 
@@ -116,8 +112,8 @@ def load_kernel_unfiltered_from_db(agent: str, coh: float):
             WHERE
                 agent = ?
                 AND coh = ?
-                AND filtering_method = 'unfiltered'
-        """, (agent, coh)).fetchone()
+                AND filtering_method = ?
+        """, (agent, coh, filtering_method)).fetchone()
 
         k_out = db.cur.execute("""
             SELECT kernel_output
@@ -130,17 +126,12 @@ def load_kernel_unfiltered_from_db(agent: str, coh: float):
 
     except ProgrammingError:
         db.close()
-        return np.zeros(300)
-    
+        return -np.ones(300, dtype=np.complex128)
+
     db.close()
 
     res = json.loads(k_out)
-    return np.sqrt(
-        np.array(res[0]) ** 2 + np.array(res[1]) ** 2
-    )
-
-def load_kernel_no_tgt_from_db(agent: str, coh: float):
-    pass
+    return np.array(res[0]) + 1j * np.array(res[1])
 
 def suffix_cache(filtering_method, from_db):
     suffixCache = ''
@@ -160,22 +151,22 @@ def get_kernels(
     """Returns kernels[idx_coh][idx_agent, :] = 300 kernel
     values for agent and coh.
     """
-    if filtering_method == 'unfiltered':
-        if from_db:
-            load_kernel = load_kernel_unfiltered_from_db
+    if from_db:
+        load_kernel = lambda agent, coh:\
+        load_kernel_from_db(agent, coh, filtering_method)
 
-        else:
-            load_kernel = load_kernel_unfiltered
+    elif filtering_method == 'unfiltered':
+        load_kernel = load_kernel_unfiltered
 
     elif filtering_method == 'remove_after_tgt':
-        if from_db:
-            load_kernel = load_kernel_no_tgt_from_db
-
-        else:
-            load_kernel = load_kernel_no_tgt
+        raise ValueError(
+            "`from_db` must be `True`" \
+            "for removing the target"
+        )
 
     cachePath = os.path.join(
-        fig_dir, 'caches', 'kernels' + suffix_cache(filtering_method, from_db)
+        fig_dir, 'caches',
+        'kernels' + suffix_cache(filtering_method, from_db)
     )
 
     if use_cache:
@@ -185,7 +176,10 @@ def get_kernels(
 
     else:
         # get the kernels modulus
-        kernels = [np.zeros( (len(agents), 300) ) for _ in range(len(cohs))]
+        kernels = [
+            np.zeros( (len(agents), 300), dtype=np.complex128 )
+            for _ in range(len(cohs))
+        ]
         for idx_coh, coh in enumerate(cohs):
             print(f"{len(cohs) - idx_coh} cohs remaining")
             for i, agent in enumerate(agents):
@@ -214,6 +208,8 @@ def get_popts(
 
     popts[idx_coh][idx_agent, idx_param] = optimal values of the curve_fit parameter
     of index idx_param in Fit_param3().param_names
+
+    `filtering_method` and `from_db` are only used to compute the cache path.
     """
     cachePath = os.path.join(
         fig_dir, 'caches', 'popts' + suffix_cache(filtering_method, from_db)
@@ -293,7 +289,7 @@ def check_popts(agents, kernels, popts, conv_popts, **kwargs):
         for idx_coh, coh in enumerate(cohs):
             fit.out = {name: val for name, val in zip(fit.param_names, popts[idx_coh][idx_agent])}
             fit_ker = fit.read_kernel_from_out()
-            ker = kernels[idx_coh][idx_agent, :]
+            ker = np.abs(kernels[idx_coh][idx_agent, :])
             _, ax = plt.subplots(1, 1, constrained_layout=True)
             ax.plot(ker, '.')
             ax.plot(fit_ker, '-')
@@ -378,9 +374,11 @@ def convert_name(
 
 def figure1_raw(
     conv_popts,
-    filtering_method: Literal['unfiltered', 'remove_after_tgt']='unfiltered',
+    filtering_method: Literal['unfiltered', 'remove_after_tgt'],
+    from_db: bool,
     with_log: bool = True,
-    smooth_hist: bool = False, **kwargs
+    smooth_hist: bool = False,
+    **kwargs
 ):
     """Figure 1 (visualize parameters individually):
     - one panel per parameter
@@ -435,14 +433,17 @@ def figure1_raw(
         y_lims = [np.inf, -np.inf]
         for tab, ax in zip(conv_popts, axs):
 
-            data = [1.5]*7 + [2.5]*2 + [3.5]*8 + [4.5]*3 + [5.5]*1 + [6.5]*8
-            density = stats.kde.gaussian_kde(data)
-            x = numpy.arange(0., 8, .1)
-            plt.plot(x, density(x))
+            if smooth_hist:
+                x = tab[:, idx_param]
+                density = stats.gaussian_kde(x)
+                x = np.linspace(np.min(x), np.max(x), 20)
+                # ax.fill_between(x, density(x), color='blue', alpha=0.3)
+                ax.plot(x, density(x), color='blue')
 
-            ax.hist(
-                tab[:, idx_param], density=True
-            )
+            else:
+                ax.hist(
+                    tab[:, idx_param], density=True
+                )
 
             x_lim = ax.get_xlim()
             x_lims[0] = min(x_lims[0], x_lim[0])
@@ -459,19 +460,23 @@ def figure1_raw(
 
         if smooth_hist:
             savePath = os.path.join(
-                fig_dir, 'figure1_raw', filtering_method,
+                fig_dir, 'figure1_raw', filtering_method + str(from_db),
                 param_name + '_distr_smooth.png'
             )
         else:
             savePath = os.path.join(
-                fig_dir, 'figure1_raw', filtering_method,
+                fig_dir, 'figure1_raw', filtering_method + str(from_db),
                 param_name + '_distr.png'
             )
         plt.savefig(savePath)
 
     plt.close('all')
 
-def figure2_raw(kernels, filtering_method='unfiltered', **kwargs):
+def figure2_raw(
+    kernels,
+    filtering_method: Literal['unfiltered', 'remove_after_tgt'],
+    from_db: bool,
+    **kwargs):
     """Plots the modulus of the raw kernels, averaged
     over all agents, for each coherence on the same figure.
     The standard deviation of the modulus, computed over
@@ -482,7 +487,7 @@ def figure2_raw(kernels, filtering_method='unfiltered', **kwargs):
     means = []
     stds = []
     for tab in kernels:
-        means.append(np.mean(tab, axis=0))
+        means.append(np.abs(np.mean(tab, axis=0)))
         stds.append(np.std(tab, axis=0))
 
     # plot
@@ -515,13 +520,18 @@ def figure2_raw(kernels, filtering_method='unfiltered', **kwargs):
         ax.fill_between(X, Y - Z / 2, Y + Z / 2, color=color, alpha=0.1)
 
     ax.legend(fontsize=fontsize)
-
-    plt.savefig(os.path.join(fig_dir, 'figure2_raw', filtering_method, 'kernel.png'))
+    savepath = os.path.join(
+        fig_dir, 'figure2_raw',
+        filtering_method + str(from_db), 'kernel.png'
+    )
+    plt.savefig(savepath)
 
 def figure3_raw(
     conv_popts,
-    filtering_method='unfiltered',
-    with_log: bool = True, **kwargs
+    filtering_method: Literal['unfiltered', 'remove_after_tgt'],
+    from_db: bool,
+    with_log: bool = True,
+    **kwargs
 ):
     """Figure 3 (visualize parameters with respect to each other):
     - one panel per coherence
@@ -567,21 +577,28 @@ def figure3_raw(
                 )
 
         plt.savefig(
-            os.path.join(fig_dir, 'figure3_raw', filtering_method, 'coh_' + f'{coh:.2f}.png'[2:])
+            os.path.join(
+                fig_dir, 'figure3_raw', filtering_method + str(from_db),
+                'coh_' + f'{coh:.2f}.png'[2:])
         )
     plt.close('all')
 
 def figure4_raw(
     corrmat,
-    filtering_method='unfiltered',
-    with_log: bool = True, **kwargs
+    filtering_method: Literal['unfiltered', 'remove_after_tgt'],
+    from_db: bool,
+    with_log: bool = True,
+    **kwargs
 ):
     """Figure 4 (visualize parameters with respect to each other):
     - one panel per coherence
     - correlation matrix btw parameters, sampled over agents
     """
     param_names = Fit_param3().param_names
-    conv_names = [convert_name(name, with_units=False, with_log=with_log) for name in param_names]
+    conv_names = [
+        convert_name(name, with_units=False, with_log=with_log)
+        for name in param_names
+    ]
     n_params = len(param_names)
     fontsize = 14
 
@@ -600,13 +617,17 @@ def figure4_raw(
         # set the fontsize for the ticks of the colorbar
         fig.axes[1].tick_params(labelsize=fontsize)
         plt.savefig(
-            os.path.join(fig_dir, 'figure4_raw', filtering_method, 'coh_' + f'{coh:.2f}.png'[2:])
+            os.path.join(
+                fig_dir, 'figure4_raw', filtering_method + str(from_db),
+                'coh_' + f'{coh:.2f}.png'[2:]
+            )
         )
     plt.close('all')
 
 def figure5_raw(
     conv_popts,
-    filtering_method='unfiltered',
+    filtering_method: Literal['unfiltered', 'remove_after_tgt'],
+    from_db: bool,
     with_log: bool = True, **kwargs
 ):
     """Computes the mean values of the fitted parameters
@@ -647,7 +668,10 @@ def figure5_raw(
         ax.fill_between(cohs, y - z / 2, y + z / 2, alpha=0.3)
 
         plt.savefig(
-            os.path.join(fig_dir, 'figure5_raw', filtering_method, param_name + '_mean.png')
+            os.path.join(
+                fig_dir, 'figure5_raw',
+                filtering_method + str(from_db), param_name + '_mean.png'
+            )
         )
 
     plt.close('all')
@@ -657,7 +681,9 @@ def figure6_raw(
     kernels: List[np.ndarray],
     popts: List[np.ndarray],
     conv_popts: List[np.ndarray],
-    filtering_method: Literal['unfiltered', 'remove_after_tgt']='unfiltered', **kwargs
+    filtering_method: Literal['unfiltered', 'remove_after_tgt'],
+    from_db: bool,
+    **kwargs
 ):
     """Plots the raw kernels together with their fits.
 
@@ -704,7 +730,10 @@ def figure6_raw(
         fig.subplots_adjust(left=0, bottom=0, right=1, top=1, wspace=0, hspace=0)
 
         plt.savefig(
-            os.path.join(fig_dir, 'figure6_raw', filtering_method, agent + '_params.png')
+            os.path.join(fig_dir,
+                'figure6_raw',
+                filtering_method + str(from_db),
+                agent + '_params.png')
         )
         plt.close()
 
@@ -723,35 +752,45 @@ def figure6_raw(
 
             fit.out = {name: val for name, val in zip(fit.param_names, popts[idx_coh][idx_agent])}
             fit_ker = fit.read_kernel_from_out()
-            ker = kernels[idx_coh][idx_agent, :]
+            ker = np.abs(kernels[idx_coh][idx_agent, :])
 
             ax.plot(X[1:-1], ker[1:-1], '.', label=label, color=color)
             ax.plot(X[1:-1], fit_ker[1:-1], '-', color=color)
         ax.legend(fontsize=fontsize)
+
         plt.savefig(
-            os.path.join(fig_dir, 'figure6_raw', filtering_method, agent + '.png')
+            os.path.join(
+                fig_dir,
+                'figure6_raw',
+                filtering_method + str(from_db),
+                agent + '.png'
+            )
         )
         plt.close()
 
 def get_figures():
+    """Generates and saves all figures.
+    """
     agents = get_agents()
-    kwargs = {
-        'use_cache': False,
-        'filtering_method': 'unfiltered',
-        'with_log': False,
-        'from_db': True
-    }
-    kernels = get_kernels(agents, **kwargs)
-    popts = get_popts(kernels, **kwargs)
-    conv_popts = convert_popts(popts, **kwargs)
-    # corrmat = get_corrmat(conv_popts)
+    for filtering_method in ['unfiltered', 'remove_after_tgt']:
+        kwargs = {
+            'use_cache': False,
+            'filtering_method': filtering_method,
+            'with_log': False,
+            'from_db': True
+        }
+        kernels = get_kernels(agents, **kwargs)
+        popts = get_popts(kernels, **kwargs)
+        conv_popts = convert_popts(popts, **kwargs)
+        corrmat = get_corrmat(conv_popts)
 
-    # figure1_raw(conv_popts, smooth_hist=True, **kwargs)
-    # figure2_raw(kernels, **kwargs)
-    # figure3_raw(conv_popts, **kwargs)
-    # figure4_raw(corrmat, **kwargs)
-    # figure5_raw(conv_popts, **kwargs)
-    # figure6_raw(agents, kernels, popts, conv_popts, **kwargs)
+        figure1_raw(conv_popts, smooth_hist=True, **kwargs)
+        figure2_raw(kernels, **kwargs)
+        figure3_raw(conv_popts, **kwargs)
+        figure4_raw(corrmat, **kwargs)
+        figure5_raw(conv_popts, **kwargs)
+        figure6_raw(agents, kernels, popts, conv_popts, **kwargs)
+
     # check_popts(agents, kernels, popts, conv_popts)
 
 def compare_db_with_former_raw_kernels():
@@ -790,11 +829,11 @@ def compare_db_with_former_raw_kernels():
             ax.set_xlabel(xlabel, fontsize=fontsize)
             ax.tick_params(labelsize=fontsize - 1)
 
-            y = db_kernels[idx_coh][idx_agent, :]
+            y = np.abs(db_kernels[idx_coh][idx_agent, :])
             y /= np.sqrt(np.sum(y ** 2))
             ax.plot(x, y, '.', label='db kernel')
 
-            y = former_kernels[idx_coh][idx_agent, :]
+            y = np.abs(former_kernels[idx_coh][idx_agent, :])
             y /= np.sqrt(np.sum(y ** 2))
             ax.plot(x, y, '.', label='former kernel')
 
@@ -895,6 +934,82 @@ def solve_shift_problem():
     kernels = get_kernels(agents)
     figure2_raw(kernels)
 
-compare_db_with_former_raw_kernels()
+def compare_db_raw_with_truncated_kernels(
+    normalize: bool
+):
+    """On a separate figure for each agent and coherence,
+    plots the raw kernel from the db with the truncated 
+    kernel from the db.
 
-# solve_shift_problem()
+    To ease comparison, both kernels can be normalized.
+    """
+    if normalize:
+        func = lambda y: np.abs(y) / np.sqrt(np.sum(y ** 2))
+    else:
+        func = np.abs
+
+    agents = get_agents()
+
+    # load the db kernels
+    db_kernels = get_kernels(
+        agents, use_cache=False, from_db=True,
+        filtering_method='unfiltered'
+    )
+
+    # load the db trunckated kernels
+    db_trunc_kernels = get_kernels(
+        agents, use_cache=False, from_db=True,
+        filtering_method='remove_after_tgt'
+    )
+
+    # plot
+    # times in sec
+    x = np.linspace(0, 1, 300) * 299 * 8.33 * 1e-3
+    fontsize = 14
+    ylabel = r'$|k(t)|$'
+    xlabel = r'$t$' + ' (sec)'
+
+    for idx_agent, agent in enumerate(agents):
+        for idx_coh, coh in enumerate(cohs):
+            _, ax = plt.subplots(1, 1, constrained_layout=True)
+            title = f"agent {agent}, coh = {coh:.2f}"
+            ax.set_title(title, fontsize=fontsize)
+            ax.set_ylabel(ylabel, fontsize=fontsize)
+            ax.set_xlabel(xlabel, fontsize=fontsize)
+            ax.tick_params(labelsize=fontsize - 1)
+
+            y = db_kernels[idx_coh][idx_agent, :]
+            ax.plot(x, func(y), '.', label='raw kernel')
+
+            y = db_trunc_kernels[idx_coh][idx_agent, :]
+            ax.plot(x, func(y), '.', label='truncated kernel')
+
+            ax.legend(fontsize=fontsize)
+            plt.show()
+
+exit()
+
+agents = get_agents()
+filtering_method = 'remove_after_tgt'
+from_db = True
+db_kernels = get_kernels(
+    agents, use_cache=True,
+    filtering_method=filtering_method,
+    from_db=from_db
+)
+popts = get_popts(
+    db_kernels,
+    use_cache=True,
+    filtering_method=filtering_method,
+    from_db=from_db
+)
+conv_popts = convert_popts(
+    popts, with_log=False
+)
+
+figure6_raw(
+    agents, kernels=db_kernels,
+    popts=popts, conv_popts=conv_popts,
+    filtering_method=filtering_method,
+    from_db=from_db
+)
